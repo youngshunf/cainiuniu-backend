@@ -86,8 +86,9 @@ class OperaLogMiddleware(BaseHTTPMiddleware):
             log.debug(f'接口摘要：[{summary}]')
             log.debug(f'请求地址：[{ctx.ip}]')
             log.debug(f'请求参数：{args}')
+            status_code = response.status_code if response else code
             log.info(
-                f'{request.client.host: <15} | {request.method: <8} | {response.status_code: <6} | '
+                f'{request.client.host: <15} | {request.method: <8} | {status_code: <6} | '
                 f'{path} | {elapsed:.3f}ms',
             )
             if request.method != 'OPTIONS':
