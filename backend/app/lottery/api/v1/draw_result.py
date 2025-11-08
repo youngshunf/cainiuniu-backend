@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query
 from backend.app.lottery.crud import draw_result_dao
 from backend.app.lottery.service.sync_service import sync_service
 from backend.app.lottery.tasks.sync_tasks import sync_all_history, sync_single_lottery
+from backend.app.lottery.utils.cache import cache_manager, CacheKeys, CacheTTL
 from backend.common.pagination import DependsPagination, paging_data
 from backend.common.response.response_schema import ResponseModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
@@ -35,19 +36,45 @@ async def get_draw_result_list(
 async def get_draw_result(
     db: CurrentSession, lottery_code: str, period: str
 ) -> ResponseModel:
-    """获取单期开奖详情"""
+    """获取单期开奖详情（带缓存）"""
+    # 生成缓存键
+    cache_key = CacheKeys.DRAW_DETAIL.format(lottery_code, period)
+    
+    # 尝试从缓存获取
+    cached_data = await cache_manager.get(cache_key)
+    if cached_data:
+        return response_base.success(data=cached_data)
+    
+    # 从数据库查询
     draw_result = await draw_result_dao.get_by_lottery_and_period(db, lottery_code, period)
     if not draw_result:
         return response_base.fail(msg='开奖数据不存在')
+    
+    # 设置缓存（1小时）
+    await cache_manager.set(cache_key, draw_result, CacheTTL.DRAW_DETAIL)
+    
     return response_base.success(data=draw_result)
 
 
 @router.get('/{lottery_code}/latest', summary='获取最新开奖', dependencies=[DependsJwtAuth])
 async def get_latest_draw_result(db: CurrentSession, lottery_code: str) -> ResponseModel:
-    """获取最新开奖"""
+    """获取最新开奖（带缓存）"""
+    # 生成缓存键
+    cache_key = CacheKeys.DRAW_LATEST.format(lottery_code)
+    
+    # 尝试从缓存获取
+    cached_data = await cache_manager.get(cache_key)
+    if cached_data:
+        return response_base.success(data=cached_data)
+    
+    # 从数据库查询
     draw_result = await draw_result_dao.get_latest_by_lottery(db, lottery_code)
     if not draw_result:
         return response_base.fail(msg='暂无开奖数据')
+    
+    # 设置缓存（5分钟）
+    await cache_manager.set(cache_key, draw_result, CacheTTL.DRAW_LATEST)
+    
     return response_base.success(data=draw_result)
 
 
@@ -57,8 +84,21 @@ async def get_history_draw_results(
     lottery_code: str,
     limit: int = Query(100, description='数量', ge=1, le=1000),
 ) -> ResponseModel:
-    """获取历史开奖"""
+    """获取历史开奖（带缓存）"""
+    # 生成缓存键
+    cache_key = CacheKeys.DRAW_HISTORY.format(lottery_code, limit)
+    
+    # 尝试从缓存获取
+    cached_data = await cache_manager.get(cache_key)
+    if cached_data:
+        return response_base.success(data=cached_data)
+    
+    # 从数据库查询
     draw_results = await draw_result_dao.get_history_by_lottery(db, lottery_code, limit)
+    
+    # 设置缓存（30分钟）
+    await cache_manager.set(cache_key, draw_results, CacheTTL.DRAW_HISTORY)
+    
     return response_base.success(data=draw_results)
 
 
@@ -70,6 +110,11 @@ async def sync_draw_data(
 ) -> ResponseModel:
     """手动同步开奖数据"""
     result = await sync_service.sync_lottery_data(db, lottery_code, page_size)
+    
+    # 同步完成后清除相关缓存
+    await cache_manager.delete(CacheKeys.DRAW_LATEST.format(lottery_code))
+    await cache_manager.delete_pattern(f'lottery:draw:*:{lottery_code}:*')
+    
     return response_base.success(data=result)
 
 
