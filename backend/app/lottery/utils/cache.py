@@ -9,7 +9,7 @@ from functools import wraps
 from typing import Any, Callable
 
 from backend.core.conf import settings
-from backend.database.db_redis import redis_client
+from backend.database.redis import redis_client
 
 
 class CacheManager:

@@ -1,4 +1,5 @@
 import os
+from urllib.parse import quote
 
 import celery
 import celery_aio_pool
@@ -10,11 +11,22 @@ from backend.core.path_conf import BASE_PATH
 
 def find_task_packages() -> list[str]:
     packages = []
+    # 查找 app/task/tasks 目录下的任务
     task_dir = BASE_PATH / 'app' / 'task' / 'tasks'
     for root, _dirs, files in os.walk(task_dir):
         if 'tasks.py' in files:
             package = root.replace(str(BASE_PATH.parent) + os.path.sep, '').replace(os.path.sep, '.')
             packages.append(package)
+    
+    # 查找 app/lottery/tasks 目录下的任务
+    lottery_task_dir = BASE_PATH / 'app' / 'lottery' / 'tasks'
+    if lottery_task_dir.exists():
+        for root, _dirs, files in os.walk(lottery_task_dir):
+            if 'tasks.py' in files or '__init__.py' in files:
+                package = root.replace(str(BASE_PATH.parent) + os.path.sep, '').replace(os.path.sep, '.')
+                if package not in packages:
+                    packages.append(package)
+    
     return packages
 
 
@@ -27,11 +39,11 @@ def init_celery() -> celery.Celery:
     celery.app.trace.build_tracer = celery_aio_pool.build_async_tracer
     celery.app.trace.reset_worker_optimizations()
 
-    broker_url = f'amqp://{settings.CELERY_RABBITMQ_USERNAME}:{settings.CELERY_RABBITMQ_PASSWORD}@{settings.CELERY_RABBITMQ_HOST}:{settings.CELERY_RABBITMQ_PORT}/{settings.CELERY_RABBITMQ_VHOST}'
+    broker_url = f'amqp://{quote(settings.CELERY_RABBITMQ_USERNAME)}:{quote(settings.CELERY_RABBITMQ_PASSWORD)}@{settings.CELERY_RABBITMQ_HOST}:{settings.CELERY_RABBITMQ_PORT}/{settings.CELERY_RABBITMQ_VHOST}'
     if settings.CELERY_BROKER == 'redis':
-        broker_url = f'redis://:{settings.REDIS_PASSWORD}@{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.CELERY_BROKER_REDIS_DATABASE}'
+        broker_url = f'redis://:{quote(settings.REDIS_PASSWORD)}@{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.CELERY_BROKER_REDIS_DATABASE}'
 
-    result_backend = f'db+postgresql+psycopg://{settings.DATABASE_USER}:{settings.DATABASE_PASSWORD}@{settings.DATABASE_HOST}:{settings.DATABASE_PORT}/{settings.DATABASE_SCHEMA}'
+    result_backend = f'db+postgresql+psycopg://{quote(settings.DATABASE_USER)}:{quote(settings.DATABASE_PASSWORD)}@{settings.DATABASE_HOST}:{settings.DATABASE_PORT}/{settings.DATABASE_SCHEMA}'
     if settings.DATABASE_TYPE == 'mysql':
         result_backend = result_backend.replace('postgresql+psycopg', 'mysql+pymysql')
 
