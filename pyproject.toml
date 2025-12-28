@@ -59,6 +59,8 @@ dependencies = [
     "sqlparse>=0.5.4",
     "starlette-context>=0.4.0",
     "user-agents>=2.2.0",
+    # LLM Gateway
+    "litellm>=1.0.0",
 ]
 
 [dependency-groups]

@@ -278,6 +278,20 @@ class Settings(BaseSettings):
     EMAIL_CAPTCHA_REDIS_PREFIX: str = 'fba:email:captcha'
     EMAIL_CAPTCHA_EXPIRE_SECONDS: int = 60 * 3  # 3 分钟
 
+    ##################################################
+    # [ App ] llm
+    ##################################################
+    # .env LLM Gateway
+    LLM_ENCRYPTION_KEY: str = ''  # Fernet 加密密钥 (base64 编码的 32 字节密钥)
+
+    # LLM Gateway 配置
+    LLM_DEFAULT_RPM_LIMIT: int = 60
+    LLM_DEFAULT_DAILY_TOKENS: int = 1000000
+    LLM_DEFAULT_MONTHLY_TOKENS: int = 10000000
+    LLM_CIRCUIT_BREAKER_THRESHOLD: int = 5
+    LLM_CIRCUIT_BREAKER_TIMEOUT: int = 30
+    LLM_REDIS_PREFIX: str = 'fba:llm'
+
     @model_validator(mode='before')
     @classmethod
     def check_env(cls, values: Any) -> Any:
