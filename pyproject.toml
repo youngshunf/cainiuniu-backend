@@ -61,6 +61,8 @@ dependencies = [
     "user-agents>=2.2.0",
     # LLM Gateway
     "litellm>=1.0.0",
+    # Agent Core
+    "agent-core",
 ]
 
 [dependency-groups]

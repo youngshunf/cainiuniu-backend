@@ -5,7 +5,7 @@
 @date 2025-12-28
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 from agent_core.tools.base import (
     ToolInterface,
@@ -16,6 +16,13 @@ from agent_core.tools.base import (
 from agent_core.runtime.interfaces import RuntimeType
 from agent_core.runtime.context import RuntimeContext
 
+# 从本地 platforms 模块导入（内部转发自 agent-core）
+from backend.app.platforms import (
+    get_adapter,
+    list_platforms,
+    adapt_content_for_platform,
+)
+
 
 class CloudBrowserPublishTool(ToolInterface):
     """
@@ -23,6 +30,7 @@ class CloudBrowserPublishTool(ToolInterface):
 
     使用云端浏览器池执行发布操作。
     需要用户开启凭证同步功能。
+    平台配置从 agent-core 的 YAML 文件加载。
     """
 
     metadata = ToolMetadata(
@@ -53,6 +61,18 @@ class CloudBrowserPublishTool(ToolInterface):
             ToolResult: 执行结果
         """
         try:
+            # 验证平台是否支持
+            supported = list_platforms()
+            if platform not in supported:
+                return ToolResult(
+                    success=False,
+                    data=None,
+                    error=f"不支持的平台: {platform}，支持的平台: {supported}",
+                )
+
+            # 获取平台适配器
+            adapter = get_adapter(platform)
+
             # 获取浏览器池
             browser_pool = ctx.extra.get("browser_pool")
             if not browser_pool:
@@ -73,18 +93,42 @@ class CloudBrowserPublishTool(ToolInterface):
                     error=f"未找到同步的凭证: {platform}/{account_id}，请在桌面端开启凭证同步",
                 )
 
+            # 使用平台适配器适配内容
+            adapted_content = adapt_content_for_platform(
+                platform=platform,
+                title=content.get("title", ""),
+                content=content.get("content", ""),
+                images=content.get("images", []),
+                videos=content.get("videos", []),
+                hashtags=content.get("hashtags", []),
+            )
+            if not adapted_content:
+                return ToolResult(
+                    success=False,
+                    data=None,
+                    error=f"内容适配失败: {platform}",
+                )
+
             # 从浏览器池获取实例
             browser_context = await browser_pool.acquire(platform, credential)
 
             try:
-                # 执行发布
-                result = await browser_context.publish(content)
+                # 执行发布（使用适配后的内容）
+                publish_content = {
+                    "title": adapted_content.title,
+                    "content": adapted_content.content,
+                    "images": adapted_content.images,
+                    "hashtags": adapted_content.hashtags,
+                }
+                result = await browser_context.publish(publish_content)
 
                 return ToolResult(
                     success=True,
                     data={
                         "platform": platform,
                         "account_id": account_id,
+                        "adapted_content": publish_content,
+                        "warnings": adapted_content.warnings,
                         "result": result,
                     },
                 )
@@ -126,14 +170,17 @@ class CloudBrowserPublishTool(ToolInterface):
         return None
 
     def get_schema(self) -> Dict[str, Any]:
-        """获取工具参数 Schema"""
+        """获取工具参数 Schema，平台列表从 agent-core 动态获取"""
+        # 从 agent-core 获取支持的平台列表
+        supported_platforms = list_platforms()
+        
         return {
             "type": "object",
             "properties": {
                 "platform": {
                     "type": "string",
                     "description": "目标平台",
-                    "enum": ["xiaohongshu", "douyin", "weibo", "wechat_mp", "bilibili"],
+                    "enum": supported_platforms,
                 },
                 "account_id": {
                     "type": "string",
@@ -141,7 +188,26 @@ class CloudBrowserPublishTool(ToolInterface):
                 },
                 "content": {
                     "type": "object",
-                    "description": "发布内容",
+                    "description": "发布内容 {title, content, images, videos, hashtags}",
+                    "properties": {
+                        "title": {"type": "string", "description": "标题"},
+                        "content": {"type": "string", "description": "正文"},
+                        "images": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "图片路径列表",
+                        },
+                        "videos": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "视频路径列表",
+                        },
+                        "hashtags": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "话题标签列表",
+                        },
+                    },
                 },
             },
             "required": ["platform", "account_id", "content"],
