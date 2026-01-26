@@ -1,22 +1,37 @@
+import shutil
+
 from functools import lru_cache
 from re import Pattern
 from typing import Any, Literal
 
 from pydantic import model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
-from backend.core.path_conf import BASE_PATH
+from backend.core.path_conf import ENV_EXAMPLE_FILE_PATH, ENV_FILE_PATH
+from backend.plugin.settings_source import PluginSettingsSource
 
 
 class Settings(BaseSettings):
     """全局配置"""
 
     model_config = SettingsConfigDict(
-        env_file=f'{BASE_PATH}/.env',
+        env_file=ENV_FILE_PATH,
         env_file_encoding='utf-8',
-        extra='ignore',
+        extra='allow',
         case_sensitive=True,
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """自定义配置源优先级"""
+        return env_settings, dotenv_settings, PluginSettingsSource(settings_cls)
 
     # .env 当前环境
     ENVIRONMENT: Literal['dev', 'prod']
@@ -125,9 +140,8 @@ class Settings(BaseSettings):
 
     # CORS
     CORS_ALLOWED_ORIGINS: list[str] = [  # 末尾不带斜杠
-        'http://127.0.0.1:8010',
+        'http://127.0.0.1:8000',
         'http://localhost:5173',
-        'http://localhost:1420',
     ]
     CORS_EXPOSE_HEADERS: list[str] = [
         'X-Request-ID',
@@ -183,9 +197,6 @@ class Settings(BaseSettings):
     LOG_ACCESS_FILENAME: str = 'fba_access.log'
     LOG_ERROR_FILENAME: str = 'fba_error.log'
 
-    # .env 操作日志
-    OPERA_LOG_ENCRYPT_SECRET_KEY: str  # secrets.token_hex(32)
-
     # 操作日志
     OPERA_LOG_PATH_EXCLUDE: list[str] = [
         '/favicon.ico',
@@ -195,10 +206,8 @@ class Settings(BaseSettings):
         f'{FASTAPI_API_V1_PATH}/auth/login/swagger',
         f'{FASTAPI_API_V1_PATH}/oauth2/github/callback',
         f'{FASTAPI_API_V1_PATH}/oauth2/google/callback',
-        f'{FASTAPI_API_V1_PATH}/oauth2/linux-do/callback',
     ]
-    OPERA_LOG_ENCRYPT_TYPE: int = 1  # 0: AES (性能损耗); 1: md5; 2: ItsDangerous; 3: 不加密, others: 替换为 ******
-    OPERA_LOG_ENCRYPT_KEY_INCLUDE: list[str] = [  # 将加密接口入参参数对应的值
+    OPERA_LOG_REDACT_KEYS: list[str] = [
         'password',
         'old_password',
         'new_password',
@@ -222,17 +231,6 @@ class Settings(BaseSettings):
     GRAFANA_OTLP_GRPC_ENDPOINT: str = 'fba_alloy:4317'
 
     ##################################################
-    # [ App ] topic (BettaFish / TrendRadar Integration)
-    ##################################################
-    BETTAFISH_API_URL: str = 'http://bettafish:5000'
-    TRENDRADAR_BASE_URL: str = ''
-    TRENDRADAR_ENDPOINT_PATH: str = '/api/hot-topics'
-    TRENDRADAR_PAYLOAD_MODE: str = 'trendradar'
-    # TrendRadar 项目根目录（可选），为空时自动按仓库目录推断
-    TRENDRADAR_PROJECT_ROOT: str = ''
-    LLM_TOPIC_RECOMMENDER_MODEL: str = 'claude-sonnet-4-5-20250929'
-
-    ##################################################
     # [ App ] task
     ##################################################
     # .env Redis
@@ -254,7 +252,7 @@ class Settings(BaseSettings):
     ##################################################
     # [ Plugin ] code_generator
     ##################################################
-    CODE_GENERATOR_DOWNLOAD_ZIP_FILENAME: str = 'fba_generator'
+    CODE_GENERATOR_DOWNLOAD_ZIP_FILENAME: str
 
     ##################################################
     # [ Plugin ] oauth2
@@ -264,17 +262,14 @@ class Settings(BaseSettings):
     OAUTH2_GITHUB_CLIENT_SECRET: str
     OAUTH2_GOOGLE_CLIENT_ID: str
     OAUTH2_GOOGLE_CLIENT_SECRET: str
-    OAUTH2_LINUX_DO_CLIENT_ID: str
-    OAUTH2_LINUX_DO_CLIENT_SECRET: str
 
-    # 基础配置
-    OAUTH2_STATE_REDIS_PREFIX: str = 'fba:oauth2:state'
-    OAUTH2_STATE_EXPIRE_SECONDS: int = 60 * 3  # 3 分钟
-    OAUTH2_GITHUB_REDIRECT_URI: str = 'http://127.0.0.1:8010/api/v1/oauth2/github/callback'
-    OAUTH2_GOOGLE_REDIRECT_URI: str = 'http://127.0.0.1:8010/api/v1/oauth2/google/callback'
-    OAUTH2_LINUX_DO_REDIRECT_URI: str = 'http://127.0.0.1:8010/api/v1/oauth2/linux-do/callback'
-    OAUTH2_FRONTEND_LOGIN_REDIRECT_URI: str = 'http://localhost:5173/oauth2/callback'
-    OAUTH2_FRONTEND_BINDING_REDIRECT_URI: str = 'http://localhost:5173/profile'
+    # 基础配置（in plugin.toml）
+    OAUTH2_STATE_REDIS_PREFIX: str
+    OAUTH2_STATE_EXPIRE_SECONDS: int
+    OAUTH2_GITHUB_REDIRECT_URI: str
+    OAUTH2_GOOGLE_REDIRECT_URI: str
+    OAUTH2_FRONTEND_LOGIN_REDIRECT_URI: str
+    OAUTH2_FRONTEND_BINDING_REDIRECT_URI: str
 
     ##################################################
     # [ Plugin ] email
@@ -283,39 +278,12 @@ class Settings(BaseSettings):
     EMAIL_USERNAME: str
     EMAIL_PASSWORD: str
 
-    # 基础配置
-    EMAIL_HOST: str = 'smtp.qq.com'
-    EMAIL_PORT: int = 465
-    EMAIL_SSL: bool = True
-    EMAIL_CAPTCHA_REDIS_PREFIX: str = 'fba:email:captcha'
-    EMAIL_CAPTCHA_EXPIRE_SECONDS: int = 60 * 3  # 3 分钟
-
-    ##################################################
-    # [ App ] llm
-    ##################################################
-    # .env LLM Gateway
-    LLM_ENCRYPTION_KEY: str = ''  # Fernet 加密密钥 (base64 编码的 32 字节密钥)
-
-    # LLM Gateway 配置
-    LLM_DEFAULT_RPM_LIMIT: int = 60
-    LLM_DEFAULT_DAILY_TOKENS: int = 1000000
-    LLM_DEFAULT_MONTHLY_TOKENS: int = 10000000
-    LLM_CIRCUIT_BREAKER_THRESHOLD: int = 5
-    LLM_CIRCUIT_BREAKER_TIMEOUT: int = 30
-    LLM_REDIS_PREFIX: str = 'fba:llm'
-
-    ##################################################
-    # [ Plugin ] sms (阿里云短信)
-    ##################################################
-    # .env 阿里云短信配置
-    SMS_ALIYUN_ACCESS_KEY_ID: str = ''
-    SMS_ALIYUN_ACCESS_KEY_SECRET: str = ''
-    SMS_ALIYUN_SIGN_NAME: str = ''  # 短信签名
-    SMS_ALIYUN_TEMPLATE_CODE: str = ''  # 验证码模板 ID
-
-    # 短信配置
-    SMS_CODE_REDIS_PREFIX: str = 'fba:sms:code'
-    SMS_CODE_EXPIRE_SECONDS: int = 60 * 5  # 5 分钟
+    # 基础配置（in plugin.toml）
+    EMAIL_HOST: str
+    EMAIL_PORT: int
+    EMAIL_SSL: bool
+    EMAIL_CAPTCHA_REDIS_PREFIX: str
+    EMAIL_CAPTCHA_EXPIRE_SECONDS: int
 
     @model_validator(mode='before')
     @classmethod
@@ -335,6 +303,8 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """获取全局配置单例"""
+    if not ENV_FILE_PATH.exists():
+        shutil.copy(ENV_EXAMPLE_FILE_PATH, ENV_FILE_PATH)
     return Settings()
 
 
