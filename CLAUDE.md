@@ -8,7 +8,7 @@
 
 ## 📋 模块概览
 
-**Cloud Backend** 是 AI Creator 的云端后端服务，基于 fastapi_best_architecture 框架构建。
+**Cloud Backend** 是 CreatorFlow 的云端后端服务，基于 fastapi_best_architecture 框架构建。
 
 ### 核心定位
 
@@ -91,67 +91,8 @@ services/cloud-backend/
 
 ---
 
-## 🔧 核心功能
 
-### 1. CloudExecutor
 
-**文件**: `backend/app/agent/executor.py`
-
-**功能**:
-- 加载 Graph 定义
-- 执行 Graph 节点
-- 调用云端工具
-- 事件流推送
-
-**特性**:
-- 支持同步/异步/流式执行
-- 成本追踪
-- 超时控制
-- 错误处理
-
-### 2. 凭证同步服务
-
-**文件**: `backend/app/credential/`
-
-**功能**:
-- 凭证加密存储
-- 凭证同步
-- 凭证访问控制
-- 审计日志
-
-**API 端点**:
-- `POST /api/v1/credential/sync` - 同步凭证
-- `GET /api/v1/credential/list` - 列出凭证
-- `DELETE /api/v1/credential/{id}` - 删除凭证
-- `POST /api/v1/credential/revoke-all` - 撤销所有凭证
-
-### 3. 浏览器池管理
-
-**文件**: `backend/app/services/browser_pool.py`
-
-**功能**:
-- 实例池化复用
-- 平台隔离
-- 自动清理空闲实例
-- 健康检查
-
-**特性**:
-- 容器化隔离
-- 资源限制
-- 熔断降级
-- 自动扩缩容
-
-### 4. Agent API
-
-**文件**: `backend/app/api/v1/agent.py`
-
-**API 端点**:
-- `POST /api/v1/agent/run` - 执行 Graph
-- `GET /api/v1/agent/run/{run_id}` - 查询执行状态
-- `GET /api/v1/agent/run/{run_id}/events` - SSE 事件流
-- `POST /api/v1/agent/graphs` - 列出可用 Graph
-
----
 
 ## 📦 依赖管理
 
@@ -178,14 +119,7 @@ dependencies = [
 
 ### 启动服务
 
-```bash
-# 开发模式
-cd services/cloud-backend
-uv run uvicorn backend.app.main:app --reload
 
-# 生产模式
-uv run granian backend.app.main:app --workers 4
-```
 
 ### 数据库迁移
 
@@ -202,27 +136,8 @@ uv run alembic downgrade -1
 
 ---
 
-## 🔗 关键文件
 
-| 文件 | 说明 | 优先级 |
-|------|------|--------|
-| `app/main.py` | FastAPI 应用入口 | P0 |
-| `app/agent/executor.py` | CloudExecutor | P0 |
-| `app/agent/tools/browser.py` | 云端浏览器工具 | P0 |
-| `app/credential/service.py` | 凭证同步服务 | P0 |
-| `app/services/browser_pool.py` | 浏览器池管理 | P0 |
-| `app/api/v1/agent.py` | Agent API | P0 |
-| `app/api/v1/credential.py` | 凭证 API | P0 |
 
----
-
-## 📚 相关文档
-
-- [云端服务设计](../../docs/04-云端服务设计.md)
-- [Agent Runtime](../../docs/05-Agent-Runtime.md)
-- [开发规范](../../docs/11-开发规范.md)
-
----
 
 ## 🔼 导航
 

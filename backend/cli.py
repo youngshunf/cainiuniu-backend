@@ -46,6 +46,18 @@ from backend.utils.console import console
 from backend.utils.dynamic_import import import_module_cached
 from backend.utils.sql_parser import parse_sql_script
 
+# Import frontend code generator CLI commands
+try:
+    from backend.plugin.code_generator.cli.codegen import CodegenFrontend, CodegenMenu, CodegenFull
+    from backend.plugin.code_generator.cli.generate import Generate as CodegenGenerate
+    from backend.plugin.code_generator.cli.generate_all import GenerateAll
+except ImportError:
+    CodegenFrontend = None
+    CodegenMenu = None
+    CodegenFull = None
+    CodegenGenerate = None
+    GenerateAll = None
+
 output_help = '\n更多信息，尝试 "[cyan]--help[/]"'
 
 
@@ -525,7 +537,7 @@ class Run:
     ]
     port: Annotated[
         int,
-        cappa.Arg(default=8010, help='提供服务的主机端口号'),
+        cappa.Arg(default=8020, help='提供服务的主机端口号'),
     ]
     no_reload: Annotated[
         bool,
@@ -647,7 +659,7 @@ class CodeGenerator:
         bool,
         cappa.Arg(short='-p', default=False, help='仅预览将要生成的文件，不执行实际生成操作'),
     ]
-    subcmd: cappa.Subcommands[Import | None] = None
+    subcmd: cappa.Subcommands[Import | CodegenFrontend | CodegenMenu | CodegenFull | CodegenGenerate | GenerateAll | None] = None
 
     def __post_init__(self) -> None:
         try:
@@ -656,7 +668,9 @@ class CodeGenerator:
             raise cappa.Exit('代码生成插件不存在，请先安装此插件')
 
     async def __call__(self) -> None:
-        await generate(preview=self.preview)
+        # Only call generate() when no subcommand is provided
+        if self.subcmd is None:
+            await generate(preview=self.preview)
 
 
 @cappa.command(help='一个高效的 fba 命令行界面', default_long=True)
@@ -675,5 +689,4 @@ class FbaCli:
 
 
 def main() -> None:
-    output = cappa.Output(error_format=f'{error_format}\n{output_help}')
-    asyncio.run(cappa.invoke_async(FbaCli, version=__version__, output=output))
+    asyncio.run(cappa.invoke_async(FbaCli, version=__version__))

@@ -285,6 +285,15 @@ class Settings(BaseSettings):
     EMAIL_CAPTCHA_REDIS_PREFIX: str
     EMAIL_CAPTCHA_EXPIRE_SECONDS: int
 
+    ##################################################
+    # [ Plugin ] sms
+    ##################################################
+    # .env SMS (Aliyun)
+    SMS_ALIYUN_ACCESS_KEY_ID: str | None = None
+    SMS_ALIYUN_ACCESS_KEY_SECRET: str | None = None
+    SMS_ALIYUN_SIGN_NAME: str | None = None
+    SMS_ALIYUN_TEMPLATE_CODE: str | None = None
+
     @model_validator(mode='before')
     @classmethod
     def check_env(cls, values: Any) -> Any:
