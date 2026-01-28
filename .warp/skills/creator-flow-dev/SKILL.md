@@ -31,85 +31,122 @@ creator-flow/
 
 ### 第一步：设计数据库表
 
-在 `clound-backend/backend/sql/` 创建 SQL 文件，遵循以下规范：
+在 `clound-backend/backend/sql/tables/` 创建 SQL 文件。
+
+#### 数据库表设计规范
+
+**表结构模板（PostgreSQL）：**
 
 ```sql
--- 表名使用下划线命名，如 user_subscription
-CREATE TABLE IF NOT EXISTS user_subscription (
-    -- 主键必须为 id，使用 SERIAL
-    id SERIAL PRIMARY KEY,
-    
-    -- 外键字段以 _id 结尾
-    user_id INTEGER NOT NULL,
-    
-    -- 字典字段命名规范（会自动生成字典）：
-    -- status, state, type, category, level, tier
-    status VARCHAR(20) NOT NULL DEFAULT 'active',
-    tier VARCHAR(20) NOT NULL DEFAULT 'free',
-    
-    -- 布尔字段以 is_ 或 has_ 开头
-    is_active BOOLEAN DEFAULT TRUE,
-    auto_renew BOOLEAN DEFAULT FALSE,
-    
-    -- 时间戳字段（必须包含，会自动排除在表单外）
-    created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_time TIMESTAMP DEFAULT NULL
+-- 表注释（放在最前面）
+CREATE TABLE "public"."user_subscription" (
+  -- 主键：必须使用 bigserial
+  "id" bigserial PRIMARY KEY,
+  
+  -- 外键字段：使用 int8，以 _id 结尾
+  "user_id" int8 NOT NULL,
+  
+  -- 字符串字段：使用 varchar，指定长度
+  "tier" varchar(32) COLLATE "pg_catalog"."default" NOT NULL DEFAULT 'free',
+  "status" varchar(32) COLLATE "pg_catalog"."default" NOT NULL DEFAULT 'active',
+  
+  -- 数值字段：金额/积分使用 numeric(15, 2)
+  "monthly_credits" numeric(15, 2) NOT NULL DEFAULT 0,
+  "current_credits" numeric(15, 2) NOT NULL DEFAULT 0,
+  
+  -- 布尔字段：以 is_/has_/auto_ 开头，类型 bool
+  "auto_renew" bool NOT NULL DEFAULT true,
+  
+  -- JSON 字段：使用 jsonb，避免使用保留字 metadata
+  "features" jsonb NOT NULL DEFAULT '{}',
+  "extra_data" jsonb,  -- 不要用 metadata
+  
+  -- 时间字段：使用 timestamptz(6)，必须同时有 created_time 和 updated_time
+  "billing_cycle_start" timestamptz(6) NOT NULL,
+  "billing_cycle_end" timestamptz(6) NOT NULL,
+  "created_time" timestamptz(6) NOT NULL DEFAULT NOW(),
+  "updated_time" timestamptz(6)  -- 可为 NULL，更新时自动填充
 );
+```
 
--- 重要：添加表注释（会作为菜单标题）
-COMMENT ON TABLE user_subscription IS '用户订阅表';
+**字段类型规范：**
 
--- 重要：添加列注释（会作为字段标签）
--- 格式：简短标签 或 简短标签 (详细说明)
--- 括号内说明会在前端自动省略
-COMMENT ON COLUMN user_subscription.user_id IS '用户 ID';
-COMMENT ON COLUMN user_subscription.status IS '订阅状态';
-COMMENT ON COLUMN user_subscription.tier IS '订阅等级';
+| 场景 | PostgreSQL 类型 | 说明 |
+|------|----------------|------|
+| 主键 | `bigserial` | 自增大整数 |
+| 外键 | `int8` | 64位整数 |
+| 短字符串 | `varchar(N)` | N 根据实际需要设置 |
+| 长文本 | `text` | 无限制长度 |
+| 金额/积分 | `numeric(15,2)` | 精确小数 |
+| 布尔 | `bool` | true/false |
+| JSON | `jsonb` | 二进制 JSON |
+| 时间戳 | `timestamptz(6)` | 带时区 |
+| 整数 | `int4` | 普通整数 |
+
+**保留字/禁止使用的字段名：**
+
+| 禁止使用 | 替代方案 | 原因 |
+|----------|----------|------|
+| `metadata` | `extra_data` | SQLAlchemy ORM 保留字 |
+| `registry` | `registry_data` | SQLAlchemy ORM 保留字 |
+| `query` | `query_data` | SQLAlchemy ORM 保留字 |
+
+**必须包含的字段：**
+
+每个表必须包含以下字段（代码生成器依赖 Base 模型的 DateTimeMixin）：
+
+```sql
+"created_time" timestamptz(6) NOT NULL DEFAULT NOW(),
+"updated_time" timestamptz(6)
+```
+
+**注释规范（重要）：**
+
+```sql
+-- 表注释：会作为菜单标题和文档说明
+COMMENT ON TABLE "public"."user_subscription" IS '用户订阅表';
+
+-- 列注释：会作为前端字段标签
+-- 格式 1：简单标签
+COMMENT ON COLUMN "public"."user_subscription"."user_id" IS '用户 ID';
+
+-- 格式 2：标签 + 字典枚举值（自动生成字典 SQL）
+COMMENT ON COLUMN "public"."user_subscription"."status" IS '订阅状态 (active:激活/expired:已过期/cancelled:已取消)';
+
+-- 格式 3：标签 + 字典枚举值 + 颜色
+COMMENT ON COLUMN "public"."user_subscription"."tier" IS '订阅等级 (free:免费版:blue/basic:基础版:green/pro:专业版:orange/enterprise:企业版:purple)';
 ```
 
 ### 字典字段命名规范
 
 以下字段名会被自动识别为字典字段，并生成对应的字典 SQL：
 
-| 模式 | 示例 | 说明 |
-|------|------|------|
-| `status` | status, user_status | 状态字典 |
-| `state` | state, order_state | 状态字典 |
-| `type` | type, payment_type | 类型字典 |
-| `category` | category | 分类字典 |
-| `level` | level, user_level | 等级字典 |
-| `tier` | tier, subscription_tier | 层级字典 |
+- `status` / `*_status` - 状态字典
+- `state` / `*_state` - 状态字典  
+- `type` / `*_type` - 类型字典
+- `category` - 分类字典
+- `level` / `*_level` - 等级字典
+- `tier` / `*_tier` - 层级字典
 
-生成的字典代码格式为：`{app}_{field_name}`，如 `llm_status`
+生成的字典代码格式为：`{app}_{field_name}`，如 `user_tier_status`
 
-### 字典枚举值定义（重要）
+### 字典枚举值格式说明
 
-在字段注释中直接定义枚举值，代码生成器会自动解析并生成字典 SQL：
+在字段注释中定义枚举值，代码生成器会自动解析并生成字典 SQL：
 
-```sql
--- 格式：标签 (value:显示名/value:显示名/...)
-COMMENT ON COLUMN user_subscription.status IS '订阅状态 (active:激活/inactive:未激活/expired:已过期/cancelled:已取消)';
-
--- 带颜色格式：标签 (value:显示名:颜色/...)
-COMMENT ON COLUMN user_subscription.status IS '订阅状态 (active:激活:green/inactive:未激活:gray/expired:已过期:red/cancelled:已取消:orange)';
-
--- 支持中文括号
-COMMENT ON COLUMN user_subscription.tier IS '订阅等级（free:免费版/basic:基础版/pro:专业版/enterprise:企业版）';
+```
+格式：标签 (value1:显示名1/value2:显示名2/...)
+带颜色：标签 (value1:显示名1:颜色/value2:显示名2:颜色/...)
 ```
 
-**枚举值格式说明：**
-- `value` - 存储在数据库中的值（字符串）
-- `显示名` - 前端显示的标签
-- `颜色` - 可选，支持 blue/green/orange/red/purple/cyan/pink/yellow，不指定则自动分配
+**参数说明：**
+- `value` - 存储在数据库中的值（英文/数字）
+- `显示名` - 前端显示的中文标签
+- `颜色` - 可选，支持：blue/green/orange/red/purple/cyan/pink/yellow
 
-**生成结果示例：**
-```sql
--- sys_dict_type: code='llm_status', name='订阅状态'
--- sys_dict_data: 
---   type_code='llm_status', value='active', label='激活', color='green'
---   type_code='llm_status', value='inactive', label='未激活', color='gray'
---   ...
-```
+**支持的括号：**
+- 英文括号 `( )`
+- 中文括号 `（ ）`
 
 ### 第二步：导入表到代码生成器
 
