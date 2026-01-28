@@ -90,6 +90,8 @@ class Settings(BaseSettings):
     TOKEN_REFRESH_REDIS_PREFIX: str = 'fba:refresh_token'
     TOKEN_REQUEST_PATH_EXCLUDE: list[str] = [  # JWT / RBAC 路由白名单
         f'{FASTAPI_API_V1_PATH}/auth/login',
+        f'{FASTAPI_API_V1_PATH}/auth/send-code',
+        f'{FASTAPI_API_V1_PATH}/auth/phone-login',
     ]
     TOKEN_REQUEST_PATH_EXCLUDE_PATTERN: list[Pattern[str]] = [  # JWT / RBAC 路由白名单（正则）
         rf'^{FASTAPI_API_V1_PATH}/monitors/(redis|server)$',
@@ -142,6 +144,7 @@ class Settings(BaseSettings):
     CORS_ALLOWED_ORIGINS: list[str] = [  # 末尾不带斜杠
         'http://127.0.0.1:8000',
         'http://localhost:5173',
+        'http://localhost:6310',
     ]
     CORS_EXPOSE_HEADERS: list[str] = [
         'X-Request-ID',
@@ -270,6 +273,21 @@ class Settings(BaseSettings):
     OAUTH2_GOOGLE_REDIRECT_URI: str
     OAUTH2_FRONTEND_LOGIN_REDIRECT_URI: str
     OAUTH2_FRONTEND_BINDING_REDIRECT_URI: str
+
+    ##################################################
+    # [ LLM Gateway ]
+    ##################################################
+    # .env LLM 网关加密密钥
+    LLM_ENCRYPTION_KEY: str = ''  # Fernet 加密密钥 (可通过 Fernet.generate_key() 生成)
+
+    ##################################################
+    # [ SMS ] Aliyun
+    ##################################################
+    # .env
+    SMS_ALIYUN_ACCESS_KEY_ID: str = ''
+    SMS_ALIYUN_ACCESS_KEY_SECRET: str = ''
+    SMS_ALIYUN_SIGN_NAME: str = ''
+    SMS_ALIYUN_TEMPLATE_CODE: str = ''
 
     ##################################################
     # [ Plugin ] email
