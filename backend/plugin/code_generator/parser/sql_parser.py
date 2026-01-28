@@ -49,8 +49,15 @@ class SQLParser:
     PG_COMMENT_ON_TABLE = re.compile(
         r"COMMENT\s+ON\s+TABLE\s+[`\"]?(?:\w+\.)?[`\"]?[`\"]?(\w+)[`\"]?\s+IS\s+'([^']*)';?", re.IGNORECASE
     )
+    # Pattern for PostgreSQL COMMENT ON COLUMN
+    # Supports: schema.table.column, table.column formats with optional quotes and newlines
     PG_COMMENT_ON_COLUMN = re.compile(
-        r"COMMENT\s+ON\s+COLUMN\s+[`\"]?(?:\w+\.)?[`\"]?[`\"]?(\w+)[`\"]?\.[`\"]?(\w+)[`\"]?\s+IS\s+'([^']*)';?", re.IGNORECASE
+        r"COMMENT\s+ON\s+COLUMN\s+"
+        r"(?:[`\"]?\w+[`\"]?\s*\.\s*)?"  # Optional schema. with optional whitespace
+        r"[`\"]?(\w+)[`\"]?\s*\.\s*"  # Table name (captured group 1)
+        r"[`\"]?(\w+)[`\"]?\s+"  # Column name (captured group 2)
+        r"IS\s+'([^']*)';?",  # Comment value (captured group 3)
+        re.IGNORECASE
     )
     # Pattern to split multiple CREATE TABLE statements
     CREATE_TABLE_PATTERN = re.compile(
