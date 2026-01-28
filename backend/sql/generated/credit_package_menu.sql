@@ -1,6 +1,6 @@
 -- =====================================================
 -- 积分包配置管理 菜单初始化 SQL (PostgreSQL)
--- 自动生成于: 2026-01-28 17:07:39.702771
+-- 自动生成于: 2026-01-28 17:38:25.368351
 -- 支持幂等操作：已存在则更新，不存在则新增
 -- =====================================================
 
@@ -27,14 +27,14 @@ BEGIN
     
     IF v_menu_id IS NULL THEN
         INSERT INTO sys_menu (title, name, path, sort, icon, type, component, perms, status, display, cache, link, remark, parent_id, created_time, updated_time)
-        VALUES ('积分包配置管理', 'CreditPackage', '/user_tier/credit_package', 1, 'lucide:list', 1, '/user_tier/credit_package/index', NULL, 1, 1, 1, '', '积分包配置表 - 定义可购买的积分包', v_parent_id, NOW(), NULL)
+        VALUES ('积分包配置管理', 'CreditPackage', '/user_tier/credit_package', 1, 'lucide:list', 1, '/user_tier/credit_package/index', NULL, 1, 1, 1, '', '积分包配置表', v_parent_id, NOW(), NULL)
         RETURNING id INTO v_menu_id;
     ELSE
         UPDATE sys_menu SET
             title = '积分包配置管理',
             name = 'CreditPackage',
             component = '/user_tier/credit_package/index',
-            remark = '积分包配置表 - 定义可购买的积分包',
+            remark = '积分包配置表',
             parent_id = v_parent_id,
             updated_time = NOW()
         WHERE id = v_menu_id;

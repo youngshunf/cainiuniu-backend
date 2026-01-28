@@ -13,21 +13,21 @@ class CreditTransactionService:
     @staticmethod
     async def get(*, db: AsyncSession, pk: int) -> CreditTransaction:
         """
-        获取积分交易记录表 - 审计所有积分变动
+        获取积分交易记录
 
         :param db: 数据库会话
-        :param pk: 积分交易记录表 - 审计所有积分变动 ID
+        :param pk: 积分交易记录 ID
         :return:
         """
         credit_transaction = await credit_transaction_dao.get(db, pk)
         if not credit_transaction:
-            raise errors.NotFoundError(msg='积分交易记录表 - 审计所有积分变动不存在')
+            raise errors.NotFoundError(msg='积分交易记录不存在')
         return credit_transaction
 
     @staticmethod
     async def get_list(db: AsyncSession) -> dict[str, Any]:
         """
-        获取积分交易记录表 - 审计所有积分变动列表
+        获取积分交易记录列表
 
         :param db: 数据库会话
         :return:
@@ -38,7 +38,7 @@ class CreditTransactionService:
     @staticmethod
     async def get_all(*, db: AsyncSession) -> Sequence[CreditTransaction]:
         """
-        获取所有积分交易记录表 - 审计所有积分变动
+        获取所有积分交易记录
 
         :param db: 数据库会话
         :return:
@@ -49,10 +49,10 @@ class CreditTransactionService:
     @staticmethod
     async def create(*, db: AsyncSession, obj: CreateCreditTransactionParam) -> None:
         """
-        创建积分交易记录表 - 审计所有积分变动
+        创建积分交易记录
 
         :param db: 数据库会话
-        :param obj: 创建积分交易记录表 - 审计所有积分变动参数
+        :param obj: 创建积分交易记录参数
         :return:
         """
         await credit_transaction_dao.create(db, obj)
@@ -60,11 +60,11 @@ class CreditTransactionService:
     @staticmethod
     async def update(*, db: AsyncSession, pk: int, obj: UpdateCreditTransactionParam) -> int:
         """
-        更新积分交易记录表 - 审计所有积分变动
+        更新积分交易记录
 
         :param db: 数据库会话
-        :param pk: 积分交易记录表 - 审计所有积分变动 ID
-        :param obj: 更新积分交易记录表 - 审计所有积分变动参数
+        :param pk: 积分交易记录 ID
+        :param obj: 更新积分交易记录参数
         :return:
         """
         count = await credit_transaction_dao.update(db, pk, obj)
@@ -73,10 +73,10 @@ class CreditTransactionService:
     @staticmethod
     async def delete(*, db: AsyncSession, obj: DeleteCreditTransactionParam) -> int:
         """
-        删除积分交易记录表 - 审计所有积分变动
+        删除积分交易记录
 
         :param db: 数据库会话
-        :param obj: 积分交易记录表 - 审计所有积分变动 ID 列表
+        :param obj: 积分交易记录 ID 列表
         :return:
         """
         count = await credit_transaction_dao.delete(db, obj.pks)

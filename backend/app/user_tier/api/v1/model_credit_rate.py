@@ -19,9 +19,9 @@ from backend.database.db import CurrentSession, CurrentSessionTransaction
 router = APIRouter()
 
 
-@router.get('/{pk}', summary='获取模型积分费率表 - 定义不同模型的积分消耗规则详情', dependencies=[DependsJwtAuth])
+@router.get('/{pk}', summary='获取模型积分费率详情', dependencies=[DependsJwtAuth])
 async def get_model_credit_rate(
-    db: CurrentSession, pk: Annotated[int, Path(description='模型积分费率表 - 定义不同模型的积分消耗规则 ID')]
+    db: CurrentSession, pk: Annotated[int, Path(description='模型积分费率 ID')]
 ) -> ResponseSchemaModel[GetModelCreditRateDetail]:
     model_credit_rate = await model_credit_rate_service.get(db=db, pk=pk)
     return response_base.success(data=model_credit_rate)
@@ -29,7 +29,7 @@ async def get_model_credit_rate(
 
 @router.get(
     '',
-    summary='分页获取所有模型积分费率表 - 定义不同模型的积分消耗规则',
+    summary='分页获取所有模型积分费率',
     dependencies=[
         DependsJwtAuth,
         DependsPagination,
@@ -42,7 +42,7 @@ async def get_model_credit_rates_paginated(db: CurrentSession) -> ResponseSchema
 
 @router.post(
     '',
-    summary='创建模型积分费率表 - 定义不同模型的积分消耗规则',
+    summary='创建模型积分费率',
     dependencies=[
         Depends(RequestPermission('model:credit:rate:add')),
         DependsRBAC,
@@ -55,14 +55,14 @@ async def create_model_credit_rate(db: CurrentSessionTransaction, obj: CreateMod
 
 @router.put(
     '/{pk}',
-    summary='更新模型积分费率表 - 定义不同模型的积分消耗规则',
+    summary='更新模型积分费率',
     dependencies=[
         Depends(RequestPermission('model:credit:rate:edit')),
         DependsRBAC,
     ],
 )
 async def update_model_credit_rate(
-    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='模型积分费率表 - 定义不同模型的积分消耗规则 ID')], obj: UpdateModelCreditRateParam
+    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='模型积分费率 ID')], obj: UpdateModelCreditRateParam
 ) -> ResponseModel:
     count = await model_credit_rate_service.update(db=db, pk=pk, obj=obj)
     if count > 0:
@@ -72,7 +72,7 @@ async def update_model_credit_rate(
 
 @router.delete(
     '',
-    summary='批量删除模型积分费率表 - 定义不同模型的积分消耗规则',
+    summary='批量删除模型积分费率',
     dependencies=[
         Depends(RequestPermission('model:credit:rate:del')),
         DependsRBAC,

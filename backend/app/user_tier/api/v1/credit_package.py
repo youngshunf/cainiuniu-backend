@@ -19,9 +19,9 @@ from backend.database.db import CurrentSession, CurrentSessionTransaction
 router = APIRouter()
 
 
-@router.get('/{pk}', summary='获取积分包配置表 - 定义可购买的积分包详情', dependencies=[DependsJwtAuth])
+@router.get('/{pk}', summary='获取积分包配置详情', dependencies=[DependsJwtAuth])
 async def get_credit_package(
-    db: CurrentSession, pk: Annotated[int, Path(description='积分包配置表 - 定义可购买的积分包 ID')]
+    db: CurrentSession, pk: Annotated[int, Path(description='积分包配置 ID')]
 ) -> ResponseSchemaModel[GetCreditPackageDetail]:
     credit_package = await credit_package_service.get(db=db, pk=pk)
     return response_base.success(data=credit_package)
@@ -29,7 +29,7 @@ async def get_credit_package(
 
 @router.get(
     '',
-    summary='分页获取所有积分包配置表 - 定义可购买的积分包',
+    summary='分页获取所有积分包配置',
     dependencies=[
         DependsJwtAuth,
         DependsPagination,
@@ -42,7 +42,7 @@ async def get_credit_packages_paginated(db: CurrentSession) -> ResponseSchemaMod
 
 @router.post(
     '',
-    summary='创建积分包配置表 - 定义可购买的积分包',
+    summary='创建积分包配置',
     dependencies=[
         Depends(RequestPermission('credit:package:add')),
         DependsRBAC,
@@ -55,14 +55,14 @@ async def create_credit_package(db: CurrentSessionTransaction, obj: CreateCredit
 
 @router.put(
     '/{pk}',
-    summary='更新积分包配置表 - 定义可购买的积分包',
+    summary='更新积分包配置',
     dependencies=[
         Depends(RequestPermission('credit:package:edit')),
         DependsRBAC,
     ],
 )
 async def update_credit_package(
-    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='积分包配置表 - 定义可购买的积分包 ID')], obj: UpdateCreditPackageParam
+    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='积分包配置 ID')], obj: UpdateCreditPackageParam
 ) -> ResponseModel:
     count = await credit_package_service.update(db=db, pk=pk, obj=obj)
     if count > 0:
@@ -72,7 +72,7 @@ async def update_credit_package(
 
 @router.delete(
     '',
-    summary='批量删除积分包配置表 - 定义可购买的积分包',
+    summary='批量删除积分包配置',
     dependencies=[
         Depends(RequestPermission('credit:package:del')),
         DependsRBAC,

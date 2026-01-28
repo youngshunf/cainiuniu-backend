@@ -19,9 +19,9 @@ from backend.database.db import CurrentSession, CurrentSessionTransaction
 router = APIRouter()
 
 
-@router.get('/{pk}', summary='获取订阅等级配置表 - 定义不同订阅等级的权益详情', dependencies=[DependsJwtAuth])
+@router.get('/{pk}', summary='获取订阅等级配置详情', dependencies=[DependsJwtAuth])
 async def get_subscription_tier(
-    db: CurrentSession, pk: Annotated[int, Path(description='订阅等级配置表 - 定义不同订阅等级的权益 ID')]
+    db: CurrentSession, pk: Annotated[int, Path(description='订阅等级配置 ID')]
 ) -> ResponseSchemaModel[GetSubscriptionTierDetail]:
     subscription_tier = await subscription_tier_service.get(db=db, pk=pk)
     return response_base.success(data=subscription_tier)
@@ -29,7 +29,7 @@ async def get_subscription_tier(
 
 @router.get(
     '',
-    summary='分页获取所有订阅等级配置表 - 定义不同订阅等级的权益',
+    summary='分页获取所有订阅等级配置',
     dependencies=[
         DependsJwtAuth,
         DependsPagination,
@@ -42,7 +42,7 @@ async def get_subscription_tiers_paginated(db: CurrentSession) -> ResponseSchema
 
 @router.post(
     '',
-    summary='创建订阅等级配置表 - 定义不同订阅等级的权益',
+    summary='创建订阅等级配置',
     dependencies=[
         Depends(RequestPermission('subscription:tier:add')),
         DependsRBAC,
@@ -55,14 +55,14 @@ async def create_subscription_tier(db: CurrentSessionTransaction, obj: CreateSub
 
 @router.put(
     '/{pk}',
-    summary='更新订阅等级配置表 - 定义不同订阅等级的权益',
+    summary='更新订阅等级配置',
     dependencies=[
         Depends(RequestPermission('subscription:tier:edit')),
         DependsRBAC,
     ],
 )
 async def update_subscription_tier(
-    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='订阅等级配置表 - 定义不同订阅等级的权益 ID')], obj: UpdateSubscriptionTierParam
+    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='订阅等级配置 ID')], obj: UpdateSubscriptionTierParam
 ) -> ResponseModel:
     count = await subscription_tier_service.update(db=db, pk=pk, obj=obj)
     if count > 0:
@@ -72,7 +72,7 @@ async def update_subscription_tier(
 
 @router.delete(
     '',
-    summary='批量删除订阅等级配置表 - 定义不同订阅等级的权益',
+    summary='批量删除订阅等级配置',
     dependencies=[
         Depends(RequestPermission('subscription:tier:del')),
         DependsRBAC,

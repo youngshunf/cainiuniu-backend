@@ -17,13 +17,13 @@ CREATE TABLE "public"."user_subscription" (
 
 COMMENT ON COLUMN "public"."user_subscription"."id" IS '主键 ID';
 COMMENT ON COLUMN "public"."user_subscription"."user_id" IS '用户 ID';
-COMMENT ON COLUMN "public"."user_subscription"."tier" IS '订阅等级: free/basic/pro/enterprise';
+COMMENT ON COLUMN "public"."user_subscription"."tier" IS '订阅等级 (free:免费版/basic:基础版/pro:专业版/enterprise:企业版)';
 COMMENT ON COLUMN "public"."user_subscription"."monthly_credits" IS '每月积分配额';
 COMMENT ON COLUMN "public"."user_subscription"."current_credits" IS '当前剩余积分';
 COMMENT ON COLUMN "public"."user_subscription"."used_credits" IS '本周期已使用积分';
 COMMENT ON COLUMN "public"."user_subscription"."purchased_credits" IS '购买的额外积分';
 COMMENT ON COLUMN "public"."user_subscription"."billing_cycle_start" IS '计费周期开始时间';
 COMMENT ON COLUMN "public"."user_subscription"."billing_cycle_end" IS '计费周期结束时间';
-COMMENT ON COLUMN "public"."user_subscription"."status" IS '订阅状态: active/expired/cancelled';
+COMMENT ON COLUMN "public"."user_subscription"."status" IS '订阅状态 (active:激活/expired:已过期/cancelled:已取消)';
 COMMENT ON COLUMN "public"."user_subscription"."auto_renew" IS '是否自动续费';
 COMMENT ON TABLE "public"."user_subscription" IS '用户订阅表';

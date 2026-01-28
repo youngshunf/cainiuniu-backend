@@ -19,9 +19,9 @@ from backend.database.db import CurrentSession, CurrentSessionTransaction
 router = APIRouter()
 
 
-@router.get('/{pk}', summary='获取积分交易记录表 - 审计所有积分变动详情', dependencies=[DependsJwtAuth])
+@router.get('/{pk}', summary='获取积分交易记录详情', dependencies=[DependsJwtAuth])
 async def get_credit_transaction(
-    db: CurrentSession, pk: Annotated[int, Path(description='积分交易记录表 - 审计所有积分变动 ID')]
+    db: CurrentSession, pk: Annotated[int, Path(description='积分交易记录 ID')]
 ) -> ResponseSchemaModel[GetCreditTransactionDetail]:
     credit_transaction = await credit_transaction_service.get(db=db, pk=pk)
     return response_base.success(data=credit_transaction)
@@ -29,7 +29,7 @@ async def get_credit_transaction(
 
 @router.get(
     '',
-    summary='分页获取所有积分交易记录表 - 审计所有积分变动',
+    summary='分页获取所有积分交易记录',
     dependencies=[
         DependsJwtAuth,
         DependsPagination,
@@ -42,7 +42,7 @@ async def get_credit_transactions_paginated(db: CurrentSession) -> ResponseSchem
 
 @router.post(
     '',
-    summary='创建积分交易记录表 - 审计所有积分变动',
+    summary='创建积分交易记录',
     dependencies=[
         Depends(RequestPermission('credit:transaction:add')),
         DependsRBAC,
@@ -55,14 +55,14 @@ async def create_credit_transaction(db: CurrentSessionTransaction, obj: CreateCr
 
 @router.put(
     '/{pk}',
-    summary='更新积分交易记录表 - 审计所有积分变动',
+    summary='更新积分交易记录',
     dependencies=[
         Depends(RequestPermission('credit:transaction:edit')),
         DependsRBAC,
     ],
 )
 async def update_credit_transaction(
-    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='积分交易记录表 - 审计所有积分变动 ID')], obj: UpdateCreditTransactionParam
+    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='积分交易记录 ID')], obj: UpdateCreditTransactionParam
 ) -> ResponseModel:
     count = await credit_transaction_service.update(db=db, pk=pk, obj=obj)
     if count > 0:
@@ -72,7 +72,7 @@ async def update_credit_transaction(
 
 @router.delete(
     '',
-    summary='批量删除积分交易记录表 - 审计所有积分变动',
+    summary='批量删除积分交易记录',
     dependencies=[
         Depends(RequestPermission('credit:transaction:del')),
         DependsRBAC,

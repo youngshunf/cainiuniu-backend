@@ -1,6 +1,6 @@
 -- =====================================================
 -- 用户订阅管理 菜单初始化 SQL (PostgreSQL)
--- 自动生成于: 2026-01-28 16:59:07.594475
+-- 自动生成于: 2026-01-28 17:38:20.774915
 -- 支持幂等操作：已存在则更新，不存在则新增
 -- =====================================================
 
@@ -27,14 +27,14 @@ BEGIN
     
     IF v_menu_id IS NULL THEN
         INSERT INTO sys_menu (title, name, path, sort, icon, type, component, perms, status, display, cache, link, remark, parent_id, created_time, updated_time)
-        VALUES ('用户订阅管理', 'UserSubscription', '/user_tier/user_subscription', 1, 'lucide:list', 1, '/user_tier/user_subscription/index', NULL, 1, 1, 1, '', '用户订阅表 - 管理用户的订阅等级和积分余额', v_parent_id, NOW(), NULL)
+        VALUES ('用户订阅管理', 'UserSubscription', '/user_tier/user_subscription', 1, 'lucide:list', 1, '/user_tier/user_subscription/index', NULL, 1, 1, 1, '', '用户订阅表', v_parent_id, NOW(), NULL)
         RETURNING id INTO v_menu_id;
     ELSE
         UPDATE sys_menu SET
             title = '用户订阅管理',
             name = 'UserSubscription',
             component = '/user_tier/user_subscription/index',
-            remark = '用户订阅表 - 管理用户的订阅等级和积分余额',
+            remark = '用户订阅表',
             parent_id = v_parent_id,
             updated_time = NOW()
         WHERE id = v_menu_id;

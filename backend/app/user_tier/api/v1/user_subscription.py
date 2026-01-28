@@ -19,9 +19,9 @@ from backend.database.db import CurrentSession, CurrentSessionTransaction
 router = APIRouter()
 
 
-@router.get('/{pk}', summary='获取用户订阅表 - 管理用户的订阅等级和积分余额详情', dependencies=[DependsJwtAuth])
+@router.get('/{pk}', summary='获取用户订阅详情', dependencies=[DependsJwtAuth])
 async def get_user_subscription(
-    db: CurrentSession, pk: Annotated[int, Path(description='用户订阅表 - 管理用户的订阅等级和积分余额 ID')]
+    db: CurrentSession, pk: Annotated[int, Path(description='用户订阅 ID')]
 ) -> ResponseSchemaModel[GetUserSubscriptionDetail]:
     user_subscription = await user_subscription_service.get(db=db, pk=pk)
     return response_base.success(data=user_subscription)
@@ -29,7 +29,7 @@ async def get_user_subscription(
 
 @router.get(
     '',
-    summary='分页获取所有用户订阅表 - 管理用户的订阅等级和积分余额',
+    summary='分页获取所有用户订阅',
     dependencies=[
         DependsJwtAuth,
         DependsPagination,
@@ -42,7 +42,7 @@ async def get_user_subscriptions_paginated(db: CurrentSession) -> ResponseSchema
 
 @router.post(
     '',
-    summary='创建用户订阅表 - 管理用户的订阅等级和积分余额',
+    summary='创建用户订阅',
     dependencies=[
         Depends(RequestPermission('user:subscription:add')),
         DependsRBAC,
@@ -55,14 +55,14 @@ async def create_user_subscription(db: CurrentSessionTransaction, obj: CreateUse
 
 @router.put(
     '/{pk}',
-    summary='更新用户订阅表 - 管理用户的订阅等级和积分余额',
+    summary='更新用户订阅',
     dependencies=[
         Depends(RequestPermission('user:subscription:edit')),
         DependsRBAC,
     ],
 )
 async def update_user_subscription(
-    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='用户订阅表 - 管理用户的订阅等级和积分余额 ID')], obj: UpdateUserSubscriptionParam
+    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='用户订阅 ID')], obj: UpdateUserSubscriptionParam
 ) -> ResponseModel:
     count = await user_subscription_service.update(db=db, pk=pk, obj=obj)
     if count > 0:
@@ -72,7 +72,7 @@ async def update_user_subscription(
 
 @router.delete(
     '',
-    summary='批量删除用户订阅表 - 管理用户的订阅等级和积分余额',
+    summary='批量删除用户订阅',
     dependencies=[
         Depends(RequestPermission('user:subscription:del')),
         DependsRBAC,

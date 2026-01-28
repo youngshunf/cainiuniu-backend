@@ -1,12 +1,12 @@
 -- =====================================================
--- 积分交易记录表 - 审计所有积分变动 字典数据初始化 SQL
--- 自动生成于: 2026-01-28 17:24:09.139007
+-- 积分交易记录表 字典数据初始化 SQL
+-- 自动生成于: 2026-01-28 17:38:29.939073
 -- =====================================================
 
 -- 交易类型 字典类型
 INSERT INTO sys_dict_type (name, code, remark, created_time, updated_time)
 VALUES
-('交易类型', 'user_tier_transaction_type', '积分交易记录表 - 审计所有积分变动模块-交易类型', NOW(), NULL)
+('交易类型', 'user_tier_transaction_type', '积分交易记录表模块-交易类型', NOW(), NULL)
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, remark = EXCLUDED.remark, updated_time = NOW();
 
 -- 交易类型 字典数据
@@ -42,7 +42,7 @@ END $$;
 -- 关联类型 字典类型
 INSERT INTO sys_dict_type (name, code, remark, created_time, updated_time)
 VALUES
-('关联类型', 'user_tier_reference_type', '积分交易记录表 - 审计所有积分变动模块-关联类型', NOW(), NULL)
+('关联类型', 'user_tier_reference_type', '积分交易记录表模块-关联类型', NOW(), NULL)
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, remark = EXCLUDED.remark, updated_time = NOW();
 
 -- 关联类型 字典数据

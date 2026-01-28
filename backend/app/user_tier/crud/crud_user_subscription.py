@@ -11,21 +11,21 @@ from backend.app.user_tier.schema.user_subscription import CreateUserSubscriptio
 class CRUDUserSubscription(CRUDPlus[UserSubscription]):
     async def get(self, db: AsyncSession, pk: int) -> UserSubscription | None:
         """
-        获取用户订阅表 - 管理用户的订阅等级和积分余额
+        获取用户订阅
 
         :param db: 数据库会话
-        :param pk: 用户订阅表 - 管理用户的订阅等级和积分余额 ID
+        :param pk: 用户订阅 ID
         :return:
         """
         return await self.select_model(db, pk)
 
     async def get_select(self) -> Select:
-        """获取用户订阅表 - 管理用户的订阅等级和积分余额列表查询表达式"""
+        """获取用户订阅列表查询表达式"""
         return await self.select_order('id', 'desc')
 
     async def get_all(self, db: AsyncSession) -> Sequence[UserSubscription]:
         """
-        获取所有用户订阅表 - 管理用户的订阅等级和积分余额
+        获取所有用户订阅
 
         :param db: 数据库会话
         :return:
@@ -34,31 +34,31 @@ class CRUDUserSubscription(CRUDPlus[UserSubscription]):
 
     async def create(self, db: AsyncSession, obj: CreateUserSubscriptionParam) -> None:
         """
-        创建用户订阅表 - 管理用户的订阅等级和积分余额
+        创建用户订阅
 
         :param db: 数据库会话
-        :param obj: 创建用户订阅表 - 管理用户的订阅等级和积分余额参数
+        :param obj: 创建用户订阅参数
         :return:
         """
         await self.create_model(db, obj)
 
     async def update(self, db: AsyncSession, pk: int, obj: UpdateUserSubscriptionParam) -> int:
         """
-        更新用户订阅表 - 管理用户的订阅等级和积分余额
+        更新用户订阅
 
         :param db: 数据库会话
-        :param pk: 用户订阅表 - 管理用户的订阅等级和积分余额 ID
-        :param obj: 更新 用户订阅表 - 管理用户的订阅等级和积分余额参数
+        :param pk: 用户订阅 ID
+        :param obj: 更新 用户订阅参数
         :return:
         """
         return await self.update_model(db, pk, obj)
 
     async def delete(self, db: AsyncSession, pks: list[int]) -> int:
         """
-        批量删除用户订阅表 - 管理用户的订阅等级和积分余额
+        批量删除用户订阅
 
         :param db: 数据库会话
-        :param pks: 用户订阅表 - 管理用户的订阅等级和积分余额 ID 列表
+        :param pks: 用户订阅 ID 列表
         :return:
         """
         return await self.delete_model_by_column(db, allow_multiple=True, id__in=pks)

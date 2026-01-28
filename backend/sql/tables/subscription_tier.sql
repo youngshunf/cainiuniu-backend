@@ -13,7 +13,7 @@ CREATE TABLE "public"."subscription_tier" (
 );
 
 COMMENT ON COLUMN "public"."subscription_tier"."id" IS '主键 ID';
-COMMENT ON COLUMN "public"."subscription_tier"."tier_name" IS '等级标识: free/basic/pro/enterprise';
+COMMENT ON COLUMN "public"."subscription_tier"."tier_name" IS '等级标识 (free:免费版/basic:基础版/pro:专业版/enterprise:企业版)';
 COMMENT ON COLUMN "public"."subscription_tier"."display_name" IS '显示名称';
 COMMENT ON COLUMN "public"."subscription_tier"."monthly_credits" IS '每月赠送积分';
 COMMENT ON COLUMN "public"."subscription_tier"."monthly_price" IS '月费';

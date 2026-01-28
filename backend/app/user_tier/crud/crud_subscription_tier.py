@@ -11,21 +11,21 @@ from backend.app.user_tier.schema.subscription_tier import CreateSubscriptionTie
 class CRUDSubscriptionTier(CRUDPlus[SubscriptionTier]):
     async def get(self, db: AsyncSession, pk: int) -> SubscriptionTier | None:
         """
-        获取订阅等级配置表 - 定义不同订阅等级的权益
+        获取订阅等级配置
 
         :param db: 数据库会话
-        :param pk: 订阅等级配置表 - 定义不同订阅等级的权益 ID
+        :param pk: 订阅等级配置 ID
         :return:
         """
         return await self.select_model(db, pk)
 
     async def get_select(self) -> Select:
-        """获取订阅等级配置表 - 定义不同订阅等级的权益列表查询表达式"""
+        """获取订阅等级配置列表查询表达式"""
         return await self.select_order('id', 'desc')
 
     async def get_all(self, db: AsyncSession) -> Sequence[SubscriptionTier]:
         """
-        获取所有订阅等级配置表 - 定义不同订阅等级的权益
+        获取所有订阅等级配置
 
         :param db: 数据库会话
         :return:
@@ -34,31 +34,31 @@ class CRUDSubscriptionTier(CRUDPlus[SubscriptionTier]):
 
     async def create(self, db: AsyncSession, obj: CreateSubscriptionTierParam) -> None:
         """
-        创建订阅等级配置表 - 定义不同订阅等级的权益
+        创建订阅等级配置
 
         :param db: 数据库会话
-        :param obj: 创建订阅等级配置表 - 定义不同订阅等级的权益参数
+        :param obj: 创建订阅等级配置参数
         :return:
         """
         await self.create_model(db, obj)
 
     async def update(self, db: AsyncSession, pk: int, obj: UpdateSubscriptionTierParam) -> int:
         """
-        更新订阅等级配置表 - 定义不同订阅等级的权益
+        更新订阅等级配置
 
         :param db: 数据库会话
-        :param pk: 订阅等级配置表 - 定义不同订阅等级的权益 ID
-        :param obj: 更新 订阅等级配置表 - 定义不同订阅等级的权益参数
+        :param pk: 订阅等级配置 ID
+        :param obj: 更新 订阅等级配置参数
         :return:
         """
         return await self.update_model(db, pk, obj)
 
     async def delete(self, db: AsyncSession, pks: list[int]) -> int:
         """
-        批量删除订阅等级配置表 - 定义不同订阅等级的权益
+        批量删除订阅等级配置
 
         :param db: 数据库会话
-        :param pks: 订阅等级配置表 - 定义不同订阅等级的权益 ID 列表
+        :param pks: 订阅等级配置 ID 列表
         :return:
         """
         return await self.delete_model_by_column(db, allow_multiple=True, id__in=pks)

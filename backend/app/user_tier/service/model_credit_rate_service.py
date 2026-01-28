@@ -13,21 +13,21 @@ class ModelCreditRateService:
     @staticmethod
     async def get(*, db: AsyncSession, pk: int) -> ModelCreditRate:
         """
-        获取模型积分费率表 - 定义不同模型的积分消耗规则
+        获取模型积分费率
 
         :param db: 数据库会话
-        :param pk: 模型积分费率表 - 定义不同模型的积分消耗规则 ID
+        :param pk: 模型积分费率 ID
         :return:
         """
         model_credit_rate = await model_credit_rate_dao.get(db, pk)
         if not model_credit_rate:
-            raise errors.NotFoundError(msg='模型积分费率表 - 定义不同模型的积分消耗规则不存在')
+            raise errors.NotFoundError(msg='模型积分费率不存在')
         return model_credit_rate
 
     @staticmethod
     async def get_list(db: AsyncSession) -> dict[str, Any]:
         """
-        获取模型积分费率表 - 定义不同模型的积分消耗规则列表
+        获取模型积分费率列表
 
         :param db: 数据库会话
         :return:
@@ -38,7 +38,7 @@ class ModelCreditRateService:
     @staticmethod
     async def get_all(*, db: AsyncSession) -> Sequence[ModelCreditRate]:
         """
-        获取所有模型积分费率表 - 定义不同模型的积分消耗规则
+        获取所有模型积分费率
 
         :param db: 数据库会话
         :return:
@@ -49,10 +49,10 @@ class ModelCreditRateService:
     @staticmethod
     async def create(*, db: AsyncSession, obj: CreateModelCreditRateParam) -> None:
         """
-        创建模型积分费率表 - 定义不同模型的积分消耗规则
+        创建模型积分费率
 
         :param db: 数据库会话
-        :param obj: 创建模型积分费率表 - 定义不同模型的积分消耗规则参数
+        :param obj: 创建模型积分费率参数
         :return:
         """
         await model_credit_rate_dao.create(db, obj)
@@ -60,11 +60,11 @@ class ModelCreditRateService:
     @staticmethod
     async def update(*, db: AsyncSession, pk: int, obj: UpdateModelCreditRateParam) -> int:
         """
-        更新模型积分费率表 - 定义不同模型的积分消耗规则
+        更新模型积分费率
 
         :param db: 数据库会话
-        :param pk: 模型积分费率表 - 定义不同模型的积分消耗规则 ID
-        :param obj: 更新模型积分费率表 - 定义不同模型的积分消耗规则参数
+        :param pk: 模型积分费率 ID
+        :param obj: 更新模型积分费率参数
         :return:
         """
         count = await model_credit_rate_dao.update(db, pk, obj)
@@ -73,10 +73,10 @@ class ModelCreditRateService:
     @staticmethod
     async def delete(*, db: AsyncSession, obj: DeleteModelCreditRateParam) -> int:
         """
-        删除模型积分费率表 - 定义不同模型的积分消耗规则
+        删除模型积分费率
 
         :param db: 数据库会话
-        :param obj: 模型积分费率表 - 定义不同模型的积分消耗规则 ID 列表
+        :param obj: 模型积分费率 ID 列表
         :return:
         """
         count = await model_credit_rate_dao.delete(db, obj.pks)
