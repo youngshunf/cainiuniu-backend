@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 
-from jinja2 import Environment, FileSystemLoader, Template, select_autoescape
+from jinja2 import Environment, FileSystemLoader, Template
 from pydantic.alias_generators import to_pascal
 
 from backend.core.conf import settings
@@ -16,7 +16,7 @@ class GenTemplate:
         """初始化模板生成器"""
         self.env = Environment(
             loader=FileSystemLoader(JINJA2_TEMPLATE_DIR),
-            autoescape=select_autoescape(enabled_extensions=['jinja']),
+            autoescape=False,  # 禁用自动转义，因为生成的是代码而非 HTML
             trim_blocks=True,
             lstrip_blocks=True,
             keep_trailing_newline=True,

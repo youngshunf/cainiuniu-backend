@@ -1,15 +1,15 @@
 -- =====================================================
--- ProjectTopics 字典数据初始化 SQL
--- 自动生成于: 2026-01-27 18:38:41.049498
+-- 项目私有选题表 字典数据初始化 SQL
+-- 自动生成于: 2026-01-28 11:52:38.262064
 -- =====================================================
 
--- status 字典类型
+-- 状态(0:待选 1:已采纳 2:已忽略) 字典类型
 INSERT INTO sys_dict_type (name, code, status, remark, created_time, updated_time)
 VALUES
-('status', 'projects_status', 1, 'projects模块-status', NOW(), NULL)
+('状态(0:待选 1:已采纳 2:已忽略)', 'projects_status', 1, '项目私有选题表模块-状态(0:待选 1:已采纳 2:已忽略)', NOW(), NULL)
 ON CONFLICT (code) DO NOTHING;
 
--- status 字典数据
+-- 状态(0:待选 1:已采纳 2:已忽略) 字典数据
 DO $$
 DECLARE
     v_dict_type_id INTEGER;

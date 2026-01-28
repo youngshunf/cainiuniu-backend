@@ -11,3 +11,4 @@ from backend.app.admin.model.opera_log import OperaLog as OperaLog
 from backend.app.admin.model.role import Role as Role
 from backend.app.admin.model.user import User as User
 from backend.app.admin.model.user_password_history import UserPasswordHistory as UserPasswordHistory
+from backend.app.admin.model.test_user import TestUser as TestUser

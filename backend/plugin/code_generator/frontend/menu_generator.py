@@ -6,6 +6,10 @@ from pydantic.alias_generators import to_pascal
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.database.db import async_db_session
+from backend.plugin.code_generator.crud.crud_business import gen_business_dao
+from backend.plugin.code_generator.crud.crud_column import gen_column_dao
+from backend.plugin.code_generator.model import GenBusiness, GenColumn
 from backend.plugin.code_generator.parser.sql_parser import TableInfo
 from backend.plugin.code_generator.utils.gen_template import gen_template
 
@@ -50,6 +54,56 @@ async def generate_menu_sql(
         template_path = 'sql/mysql/init.jinja'
     else:
         template_path = 'sql/postgresql/init.jinja'
+
+    # Render template
+    template = gen_template.get_template(template_path)
+    sql = await template.render_async(**vars_dict)
+
+    return sql
+
+
+async def generate_menu_sql_from_db(
+    business_id: int,
+    app: str,
+    module: str | None = None,
+    parent_menu_id: int | None = None,
+) -> str:
+    """
+    Generate menu SQL from gen_business/gen_column tables.
+
+    :param business_id: GenBusiness ID
+    :param app: Application name
+    :param module: Module name (defaults to table name with dashes)
+    :param parent_menu_id: Optional parent menu ID
+    :return: SQL string
+    """
+    # Query gen_business
+    async with async_db_session() as db:
+        business = await gen_business_dao.get(db, business_id)
+        if not business:
+            raise ValueError(f'GenBusiness not found: id={business_id}')
+
+    # Use module name or derive from table name
+    if not module:
+        module = business.table_name.replace('_', '-')
+
+    # Prepare template variables
+    from datetime import datetime
+    class_name = business.class_name or to_pascal(business.table_name)
+    vars_dict = {
+        'app_name': app,
+        'table_name': business.table_name,
+        'doc_comment': business.table_comment or business.doc_comment or class_name,
+        'schema_name': class_name,
+        'permission': business.table_name.replace('_', ':'),
+        'now': datetime.now,
+    }
+
+    if parent_menu_id:
+        vars_dict['parent_menu_id'] = parent_menu_id
+
+    # Use PostgreSQL template by default (can be configured)
+    template_path = 'sql/postgresql/init.jinja'
 
     # Render template
     template = gen_template.get_template(template_path)

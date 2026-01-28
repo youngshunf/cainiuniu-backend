@@ -1,12 +1,12 @@
 -- =====================================================
--- 测试用户表 菜单初始化 SQL (PostgreSQL)
--- 自动生成于: 2026-01-28 11:37:24.561144
+-- 测试用户 菜单初始化 SQL (PostgreSQL)
+-- 自动生成于: 2026-01-28 11:37:24.452557+08:00
 -- =====================================================
 
 -- 父级菜单
 INSERT INTO sys_menu (title, name, path, sort, icon, type, component, perms, status, display, cache, link, remark, parent_id, created_time, updated_time)
 VALUES
-('测试用户表', 'TestUser', '/admin', 1, 'lucide:list', 1, '#/views/admin/index.vue', NULL, 1, 1, 1, '', '测试用户表管理', NULL, NOW(), NULL)
+('测试用户', 'TestUser', '/admin', 1, 'lucide:list', 1, '#/views/admin/index.vue', NULL, 1, 1, 1, '', '测试用户管理', NULL, NOW(), NULL)
 RETURNING id AS parent_menu_id;
 
 -- 获取刚插入的父菜单 ID（存储到变量中用于后续按钮菜单）

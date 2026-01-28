@@ -7,6 +7,9 @@ from pydantic.alias_generators import to_pascal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.path_conf import BASE_PATH
+from backend.database.db import async_db_session
+from backend.plugin.code_generator.crud.crud_business import gen_business_dao
+from backend.plugin.code_generator.crud.crud_column import gen_column_dao
 from backend.plugin.code_generator.crud.crud_gen import gen_dao
 from backend.plugin.code_generator.frontend.component_selector import (
     select_form_component,
@@ -17,6 +20,7 @@ from backend.plugin.code_generator.frontend.component_selector import (
     should_include_in_search,
 )
 from backend.plugin.code_generator.frontend.type_mapper import sql_to_typescript
+from backend.plugin.code_generator.model import GenBusiness, GenColumn
 from backend.plugin.code_generator.parser.sql_parser import ColumnInfo, TableInfo, sql_parser
 from backend.plugin.code_generator.utils.gen_template import gen_template
 from backend.utils.console import console
@@ -91,6 +95,45 @@ class FrontendGenerator:
 
     async def generate_from_db(
         self,
+        business_id: int,
+        app: str,
+        module: str | None = None,
+        output_dir: Path | None = None,
+        force: bool = False,
+    ) -> None:
+        """
+        Generate frontend code from gen_business/gen_column tables.
+
+        :param business_id: GenBusiness ID
+        :param app: Application name
+        :param module: Module name (optional)
+        :param output_dir: Output directory (auto-detected if None)
+        :param force: Force overwrite existing files
+        """
+        # Query gen_business and gen_column
+        async with async_db_session() as db:
+            business = await gen_business_dao.get(db, business_id)
+            if not business:
+                raise ValueError(f'GenBusiness not found: id={business_id}')
+            
+            columns = await gen_column_dao.get_all_by_business(db, business_id)
+
+        # Convert to TableInfo
+        table_info = self._convert_gen_to_table_info(business, list(columns))
+
+        # Use module name or derive from table name
+        if not module:
+            module = business.table_name.replace('_', '-')
+
+        # Detect frontend directory
+        if not output_dir:
+            output_dir = self._detect_frontend_dir()
+
+        # Generate code
+        await self._generate_code(table_info, app, module, output_dir, force)
+
+    async def generate_from_db_introspection(
+        self,
         table: str,
         db_schema: str,
         app: str,
@@ -100,7 +143,7 @@ class FrontendGenerator:
         db: AsyncSession | None = None,
     ) -> None:
         """
-        Generate frontend code from database introspection.
+        Generate frontend code from database introspection (direct DB metadata).
 
         :param table: Table name
         :param db_schema: Database schema name
@@ -133,6 +176,33 @@ class FrontendGenerator:
 
         # Generate code
         await self._generate_code(table_info, app, module, output_dir, force)
+
+    def _convert_gen_to_table_info(self, business: GenBusiness, columns: list[GenColumn]) -> TableInfo:
+        """
+        Convert GenBusiness/GenColumn to TableInfo.
+
+        :param business: GenBusiness object
+        :param columns: List of GenColumn objects
+        :return: TableInfo object
+        """
+        # Create ColumnInfo list
+        column_infos = []
+        for col in columns:
+            column_info = ColumnInfo(
+                name=col.name,
+                type=col.type.upper(),  # SQLA type -> uppercase for consistency
+                length=col.length if col.length > 0 else None,
+                nullable=col.is_nullable,
+                comment=col.comment,
+                is_primary_key=col.is_pk,
+            )
+            column_infos.append(column_info)
+
+        return TableInfo(
+            name=business.table_name,
+            comment=business.table_comment or business.doc_comment,
+            columns=column_infos,
+        )
 
     def _convert_db_to_table_info(self, table_data: dict, columns_data: list[dict]) -> TableInfo:
         """
@@ -204,39 +274,34 @@ class FrontendGenerator:
         api_file = api_dir / f'{module}.ts'  # api/app/module.ts
         route_file = src_dir / 'router' / 'routes' / 'modules' / f'{app}.ts'
 
-        # Check for existing files (behavior controlled by config/force flag)
-        if not force:
-            existing_files = []
-            if (views_dir / 'index.vue').exists():
-                existing_files.append(str(views_dir / 'index.vue'))
-            if (views_dir / 'data.ts').exists():
-                existing_files.append(str(views_dir / 'data.ts'))
-
-            if existing_files:
-                console.print(f'[yellow]以下文件已存在（跳过）:[/yellow]')
-                for f in existing_files:
-                    console.print(f'  [dim]- {f}[/dim]')
-                console.print('[dim]如需覆盖，请在配置文件中设置 existing_file_behavior = "overwrite"[/dim]')
-                return
-
         # Create directories
         views_dir.mkdir(parents=True, exist_ok=True)
+        api_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate Vue component
-        console.print(f'  Creating [cyan]{views_dir / "index.vue"}[/cyan]')
-        vue_template = self.template_env.get_template('vue/index.vue.jinja')
-        vue_content = await vue_template.render_async(**vars_dict)
-        (views_dir / 'index.vue').write_text(vue_content, encoding='utf-8')
+        if force or not (views_dir / 'index.vue').exists():
+            console.print(f'  Creating [cyan]{views_dir / "index.vue"}[/cyan]')
+            vue_template = self.template_env.get_template('vue/index.vue.jinja')
+            vue_content = await vue_template.render_async(**vars_dict)
+            (views_dir / 'index.vue').write_text(vue_content, encoding='utf-8')
+        else:
+            console.print(f'  [yellow]Skipping[/yellow] [dim]{views_dir / "index.vue"}[/dim] (already exists)')
 
         # Generate data.ts
-        console.print(f'  Creating [cyan]{views_dir / "data.ts"}[/cyan]')
-        data_template = self.template_env.get_template('vue/data.ts.jinja')
-        data_content = await data_template.render_async(**vars_dict)
-        (views_dir / 'data.ts').write_text(data_content, encoding='utf-8')
+        if force or not (views_dir / 'data.ts').exists():
+            console.print(f'  Creating [cyan]{views_dir / "data.ts"}[/cyan]')
+            data_template = self.template_env.get_template('vue/data.ts.jinja')
+            data_content = await data_template.render_async(**vars_dict)
+            (views_dir / 'data.ts').write_text(data_content, encoding='utf-8')
+        else:
+            console.print(f'  [yellow]Skipping[/yellow] [dim]{views_dir / "data.ts"}[/dim] (already exists)')
 
         # Generate API file
-        console.print(f'  Creating [cyan]{api_file}[/cyan]')
-        await self._generate_or_update_api(api_file, vars_dict, force)
+        if force or not api_file.exists():
+            console.print(f'  Creating [cyan]{api_file}[/cyan]')
+            await self._generate_or_update_api(api_file, vars_dict, force=True)
+        else:
+            console.print(f'  [yellow]Skipping[/yellow] [dim]{api_file}[/dim] (already exists)')
 
         # Generate or update route file
         console.print(f'  Updating [cyan]{route_file}[/cyan]')
@@ -292,8 +357,8 @@ class FrontendGenerator:
             'form_columns': [c for c in columns_meta if c['include_in_form']],
             'search_columns': [c for c in columns_meta if c['include_in_search']],
             'api_path': f'/api/v1/{app}',
-            'route_path': f'/{app}',
-            'component_path': f'#/views/{app}/index.vue',
+            'route_path': f'/{app}/{module}',
+            'component_path': f'#/views/{app}/{module}/index.vue',
             'menu_icon': 'lucide:list',
             'menu_order': 1,
             'permission_prefix': table_info.name.replace('_', ':'),

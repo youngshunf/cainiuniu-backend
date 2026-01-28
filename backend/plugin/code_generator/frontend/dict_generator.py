@@ -7,7 +7,11 @@ from pydantic.alias_generators import to_pascal
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.database.db import async_db_session
 from backend.plugin.code_generator.config_loader import codegen_config
+from backend.plugin.code_generator.crud.crud_business import gen_business_dao
+from backend.plugin.code_generator.crud.crud_column import gen_column_dao
+from backend.plugin.code_generator.model import GenBusiness, GenColumn
 from backend.plugin.code_generator.parser.sql_parser import TableInfo
 
 
@@ -128,6 +132,148 @@ async def generate_dict_sql(
                 )
 
         if table_info.dialect.value == 'postgresql':
+            sql_lines.extend(['END $$;', ''])
+        else:
+            sql_lines.append('')
+
+    sql_lines.extend([
+        '-- =====================================================',
+        '-- 字典数据生成完成',
+        '-- =====================================================',
+    ])
+
+    return '\n'.join(sql_lines)
+
+
+async def generate_dict_sql_from_db(
+    business_id: int,
+    app: str,
+    dialect: str = 'postgresql',
+) -> str | None:
+    """
+    Generate dictionary SQL from gen_business/gen_column tables.
+
+    :param business_id: GenBusiness ID
+    :param app: Application name
+    :param dialect: Database dialect ('postgresql' or 'mysql')
+    :return: SQL string or None if no dict fields found
+    """
+    from datetime import datetime
+
+    # Query gen_business and gen_column
+    async with async_db_session() as db:
+        business = await gen_business_dao.get(db, business_id)
+        if not business:
+            raise ValueError(f'GenBusiness not found: id={business_id}')
+        
+        columns = await gen_column_dao.get_all_by_business(db, business_id)
+
+    # 查找需要生成字典的字段
+    dict_fields = []
+    patterns = codegen_config.auto_dict_patterns
+
+    for column in columns:
+        # 跳过主键和时间戳字段
+        if column.is_pk or column.name.lower() in (
+            'created_time',
+            'updated_time',
+            'created_at',
+            'updated_at',
+            'deleted_at',
+        ):
+            continue
+
+        # 检查字段名是否匹配字典模式
+        for pattern in patterns:
+            if re.search(pattern, column.name.lower()):
+                dict_fields.append(column)
+                break
+
+    if not dict_fields:
+        return None
+
+    table_name = business.table_name
+    table_comment = business.table_comment or business.doc_comment or to_pascal(table_name)
+
+    # 生成字典 SQL
+    sql_lines = [
+        '-- =====================================================',
+        f'-- {table_comment} 字典数据初始化 SQL',
+        f'-- 自动生成于: {datetime.now()}',
+        '-- =====================================================',
+        '',
+    ]
+
+    for column in dict_fields:
+        dict_type_code = f'{app}_{column.name}'
+        dict_type_name = column.comment or column.name
+
+        # 确定使用哪个默认选项
+        if 'status' in column.name.lower() or 'state' in column.name.lower():
+            options = codegen_config.default_status_options
+        elif 'type' in column.name.lower():
+            options = codegen_config.default_type_options
+        else:
+            options = [
+                {'label': '选项1', 'value': 1, 'color': 'blue'},
+                {'label': '选项2', 'value': 2, 'color': 'green'},
+            ]
+
+        sql_lines.extend([
+            f'-- {dict_type_name} 字典类型',
+            'INSERT INTO sys_dict_type (name, code, status, remark, created_time, updated_time)',
+            'VALUES',
+            f"('{dict_type_name}', '{dict_type_code}', 1, '{table_comment}模块-{dict_type_name}', NOW(), NULL)",
+            'ON CONFLICT (code) DO NOTHING;',
+            '',
+            f'-- {dict_type_name} 字典数据',
+        ])
+
+        # 获取刚插入的字典类型 ID
+        if dialect == 'mysql':
+            sql_lines.append('SET @dict_type_id = (SELECT id FROM sys_dict_type WHERE code = '
+                           f"'{dict_type_code}' ORDER BY id DESC LIMIT 1);")
+            type_id_placeholder = '@dict_type_id'
+        else:
+            sql_lines.extend([
+                'DO $$',
+                'DECLARE',
+                '    v_dict_type_id INTEGER;',
+                'BEGIN',
+                '    SELECT id INTO v_dict_type_id FROM sys_dict_type',
+                f"    WHERE code = '{dict_type_code}' ORDER BY id DESC LIMIT 1;",
+                '',
+            ])
+            type_id_placeholder = 'v_dict_type_id'
+
+        # 插入字典数据选项
+        for idx, option in enumerate(options):
+            label = option['label']
+            value = option['value']
+            color = option.get('color', 'blue')
+
+            if dialect == 'mysql':
+                sql_lines.append(
+                    'INSERT INTO sys_dict_data (label, value, sort, status, color_type, '
+                    'type_id, remark, created_time, updated_time)'
+                )
+                sql_lines.append('VALUES')
+                sql_lines.append(
+                    f"('{label}', '{value}', {idx + 1}, 1, '{color}', "
+                    f"{type_id_placeholder}, '', NOW(), NULL);"
+                )
+            else:
+                sql_lines.append(
+                    '    INSERT INTO sys_dict_data (label, value, sort, status, color_type, '
+                    'type_id, remark, created_time, updated_time)'
+                )
+                sql_lines.append('    VALUES')
+                sql_lines.append(
+                    f"    ('{label}', '{value}', {idx + 1}, 1, '{color}', "
+                    f"{type_id_placeholder}, '', NOW(), NULL);"
+                )
+
+        if dialect == 'postgresql':
             sql_lines.extend(['END $$;', ''])
         else:
             sql_lines.append('')

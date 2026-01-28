@@ -1,12 +1,12 @@
 -- =====================================================
--- ProjectTopics 菜单初始化 SQL (PostgreSQL)
--- 自动生成于: 2026-01-27 18:38:41.030612
+-- 项目私有选题表 菜单初始化 SQL (PostgreSQL)
+-- 自动生成于: 2026-01-28 11:52:38.247033
 -- =====================================================
 
 -- 父级菜单
 INSERT INTO sys_menu (title, name, path, sort, icon, type, component, perms, status, display, cache, link, remark, parent_id, created_time, updated_time)
 VALUES
-('ProjectTopics', 'ProjectTopics', '/projects', 1, 'lucide:list', 1, '#/views/projects/index.vue', NULL, 1, 1, 1, '', 'ProjectTopics管理', NULL, NOW(), NULL)
+('项目私有选题表', 'ProjectTopics', '/projects', 1, 'lucide:list', 1, '#/views/projects/index.vue', NULL, 1, 1, 1, '', '项目私有选题表管理', NULL, NOW(), NULL)
 RETURNING id AS parent_menu_id;
 
 -- 获取刚插入的父菜单 ID（存储到变量中用于后续按钮菜单）
