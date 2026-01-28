@@ -272,7 +272,6 @@ class FrontendGenerator:
         views_dir = src_dir / 'views' / app / module  # views/app/module/
         api_dir = src_dir / 'api' / app  # api/app/
         api_file = api_dir / f'{module}.ts'  # api/app/module.ts
-        route_file = src_dir / 'router' / 'routes' / 'modules' / f'{app}.ts'
 
         # Create directories
         views_dir.mkdir(parents=True, exist_ok=True)
@@ -303,9 +302,8 @@ class FrontendGenerator:
         else:
             console.print(f'  [yellow]Skipping[/yellow] [dim]{api_file}[/dim] (already exists)')
 
-        # Generate or update route file
-        console.print(f'  Updating [cyan]{route_file}[/cyan]')
-        await self._generate_or_update_route(route_file, vars_dict)
+        # 注：不再生成前端路由文件，菜单由后端 sys_menu 表动态控制
+        # 前端通过 import.meta.glob('../views/**/*.vue') 自动扫描组件
 
         console.print('[green]Frontend code generated successfully![/green]')
 
@@ -357,10 +355,6 @@ class FrontendGenerator:
             'form_columns': [c for c in columns_meta if c['include_in_form']],
             'search_columns': [c for c in columns_meta if c['include_in_search']],
             'api_path': f'/api/v1/{app}',
-            'route_path': f'/{app}/{module}',
-            'component_path': f'#/views/{app}/{module}/index.vue',
-            'menu_icon': 'lucide:list',
-            'menu_order': 1,
             'permission_prefix': table_info.name.replace('_', ':'),
         }
 
@@ -380,49 +374,6 @@ class FrontendGenerator:
         # Create directory and write file
         api_file.parent.mkdir(parents=True, exist_ok=True)
         api_file.write_text(new_api_content, encoding='utf-8')
-
-    async def _generate_or_update_route(self, route_file: Path, vars_dict: dict) -> None:
-        """Generate or update route file."""
-        route_template = self.template_env.get_template('typescript/route.ts.jinja')
-        new_route_content = await route_template.render_async(**vars_dict)
-
-        if route_file.exists():
-            # Append to existing file
-            existing_content = route_file.read_text(encoding='utf-8')
-            # Check if this route already exists
-            if f"name: '{vars_dict['class_name']}'" in existing_content:
-                console.print(f'    [yellow]Route for {vars_dict["class_name"]} already exists, skipping[/yellow]')
-                return
-            # Append new route to routes array
-            # Find the last route and insert before the closing bracket
-            if 'export default' in existing_content:
-                # Insert before the last closing bracket
-                last_bracket = existing_content.rfind(']')
-                if last_bracket != -1:
-                    # Add comma if needed
-                    before_bracket = existing_content[:last_bracket].rstrip()
-                    if not before_bracket.endswith(','):
-                        before_bracket += ','
-                    updated_content = before_bracket + '\n' + new_route_content + '\n' + existing_content[last_bracket:]
-                    route_file.write_text(updated_content, encoding='utf-8')
-                else:
-                    console.print('[yellow]    Could not find routes array, appending to end[/yellow]')
-                    route_file.write_text(existing_content + '\n\n' + new_route_content, encoding='utf-8')
-            else:
-                # File doesn't have proper structure, append
-                route_file.write_text(existing_content + '\n\n' + new_route_content, encoding='utf-8')
-        else:
-            # Create new file with proper structure
-            route_file.parent.mkdir(parents=True, exist_ok=True)
-            full_content = f"""import type {{ RouteRecordRaw }} from 'vue-router';
-
-const routes: RouteRecordRaw[] = [
-{new_route_content}
-];
-
-export default routes;
-"""
-            route_file.write_text(full_content, encoding='utf-8')
 
     def _detect_frontend_dir(self) -> Path:
         """
