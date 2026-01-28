@@ -67,6 +67,14 @@ class UserInfoSchemaBase(SchemaBase):
     avatar: Annotated[HttpUrl, PlainSerializer(ser_string)] | None = Field(None, description='头像地址')
     email: CustomEmailStr | None = Field(None, description='邮箱')
     phone: CustomPhoneNumber | None = Field(None, description='手机号')
+    # 扩展用户资料字段
+    gender: str | None = Field(None, description='性别(male/female/other)')
+    birthday: str | None = Field(None, description='生日(YYYY-MM-DD)')
+    province: str | None = Field(None, description='省份')
+    city: str | None = Field(None, description='城市')
+    district: str | None = Field(None, description='区')
+    industry: str | None = Field(None, description='行业')
+    bio: str | None = Field(None, description='个人简介')
 
 
 class UpdateUserParam(UserInfoSchemaBase):
