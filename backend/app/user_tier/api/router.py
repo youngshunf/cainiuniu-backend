@@ -7,7 +7,7 @@ from backend.app.user_tier.api.v1.credit_transaction import router as credit_tra
 from backend.app.user_tier.api.v1.credit_package import router as credit_package_router
 from backend.core.conf import settings
 
-v1 = APIRouter(prefix=settings.FASTAPI_API_V1_PATH, tags=['用户订阅管理 '])
+v1 = APIRouter(prefix=f'{settings.FASTAPI_API_V1_PATH}/user_tier', tags=['用户订阅管理'])
 
 v1.include_router(credit_package_router, prefix='/credit/packages')
 v1.include_router(credit_transaction_router, prefix='/credit/transactions')
