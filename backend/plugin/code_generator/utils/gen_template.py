@@ -102,6 +102,7 @@ class GenTemplate:
         for model in models:
             model_dict = {
                 'name': model.name,
+                'db_column': model.name,  # 原始数据库列名
                 'comment': model.comment,
                 'type': model.type,
                 'pd_type': model.pd_type,
@@ -111,7 +112,7 @@ class GenTemplate:
                 'is_pk': model.is_pk,
                 'is_nullable': model.is_nullable,
             }
-            # 重命名 SQLAlchemy 保留字段
+            # 重命名 SQLAlchemy 保留字段，保留原始列名用于映射
             if model.name in SQLALCHEMY_RESERVED_NAMES:
                 model_dict['name'] = SQLALCHEMY_RESERVED_NAMES[model.name]
             result.append(model_dict)

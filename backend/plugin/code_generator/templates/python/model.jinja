@@ -57,6 +57,9 @@ class {{ class_name }}({% if datetime_mixin %}Base{% else %}DataClassBase{% endi
     {%- if model.is_nullable %} Mapped[{{ model.pd_type }} | None]
     {%- else %} Mapped[{{ model.pd_type }}]
     {%- endif %} = mapped_column(
+    {%- if model.name != model.db_column -%}
+        '{{ model.db_column }}',
+    {%- endif -%}
     {%- if model.type in ['TEXT', 'Text', 'LONGTEXT'] -%}
         UniversalText
     {%- elif model.type in ['TIMESTAMP', 'DateTime', 'TIMESTAMP WITHOUT TIME ZONE', 'TIMESTAMP WITH TIME ZONE'] -%}
