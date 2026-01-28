@@ -10,7 +10,8 @@ CREATE TABLE "public"."credit_transaction" (
   "reference_type" varchar(32) COLLATE "pg_catalog"."default",
   "description" varchar(512) COLLATE "pg_catalog"."default",
   "extra_data" jsonb,
-  "created_time" timestamptz(6) NOT NULL DEFAULT NOW()
+  "created_time" timestamptz(6) NOT NULL DEFAULT NOW(),
+  "updated_time" timestamptz(6)
 );
 
 COMMENT ON COLUMN "public"."credit_transaction"."id" IS '主键 ID';
