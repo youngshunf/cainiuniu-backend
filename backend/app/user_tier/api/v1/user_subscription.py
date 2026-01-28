@@ -2,13 +2,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query
 
-from backend.app.llm.schema.user_subscription import (
+from backend.app.user_tier.schema.user_subscription import (
     CreateUserSubscriptionParam,
     DeleteUserSubscriptionParam,
     GetUserSubscriptionDetail,
     UpdateUserSubscriptionParam,
 )
-from backend.app.llm.service.user_subscription_service import user_subscription_service
+from backend.app.user_tier.service.user_subscription_service import user_subscription_service
 from backend.common.pagination import DependsPagination, PageData
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth

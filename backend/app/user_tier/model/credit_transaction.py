@@ -23,4 +23,4 @@ class CreditTransaction(Base):
     reference_id: Mapped[str | None] = mapped_column(sa.String(64), default=None, comment='关联 ID (如 usage_log.request_id, payment.order_id)')
     reference_type: Mapped[str | None] = mapped_column(sa.String(32), default=None, comment='关联类型: llm_usage/payment/system/manual')
     description: Mapped[str | None] = mapped_column(sa.String(512), default=None, comment='交易描述')
-    metadata_: Mapped[dict | None] = mapped_column('metadata', postgresql.JSONB(), default=None, comment='扩展元数据 (JSON)')
+    meta_data: Mapped[dict | None] = mapped_column(postgresql.JSONB(), default=None, comment='扩展元数据 (JSON)')

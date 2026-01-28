@@ -2,13 +2,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query
 
-from backend.app.llm.schema.model_credit_rate import (
+from backend.app.user_tier.schema.model_credit_rate import (
     CreateModelCreditRateParam,
     DeleteModelCreditRateParam,
     GetModelCreditRateDetail,
     UpdateModelCreditRateParam,
 )
-from backend.app.llm.service.model_credit_rate_service import model_credit_rate_service
+from backend.app.user_tier.service.model_credit_rate_service import model_credit_rate_service
 from backend.common.pagination import DependsPagination, PageData
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth

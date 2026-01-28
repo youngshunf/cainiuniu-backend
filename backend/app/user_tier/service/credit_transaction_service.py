@@ -2,9 +2,9 @@ from typing import Any, Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.llm.crud.crud_credit_transaction import credit_transaction_dao
-from backend.app.llm.model import CreditTransaction
-from backend.app.llm.schema.credit_transaction import CreateCreditTransactionParam, DeleteCreditTransactionParam, UpdateCreditTransactionParam
+from backend.app.user_tier.crud.crud_credit_transaction import credit_transaction_dao
+from backend.app.user_tier.model import CreditTransaction
+from backend.app.user_tier.schema.credit_transaction import CreateCreditTransactionParam, DeleteCreditTransactionParam, UpdateCreditTransactionParam
 from backend.common.exception import errors
 from backend.common.pagination import paging_data
 

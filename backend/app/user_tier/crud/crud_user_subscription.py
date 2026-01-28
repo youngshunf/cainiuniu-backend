@@ -4,8 +4,8 @@ from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.llm.model import UserSubscription
-from backend.app.llm.schema.user_subscription import CreateUserSubscriptionParam, UpdateUserSubscriptionParam
+from backend.app.user_tier.model import UserSubscription
+from backend.app.user_tier.schema.user_subscription import CreateUserSubscriptionParam, UpdateUserSubscriptionParam
 
 
 class CRUDUserSubscription(CRUDPlus[UserSubscription]):

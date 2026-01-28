@@ -4,8 +4,8 @@ from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.llm.model import CreditPackage
-from backend.app.llm.schema.credit_package import CreateCreditPackageParam, UpdateCreditPackageParam
+from backend.app.user_tier.model import CreditPackage
+from backend.app.user_tier.schema.credit_package import CreateCreditPackageParam, UpdateCreditPackageParam
 
 
 class CRUDCreditPackage(CRUDPlus[CreditPackage]):

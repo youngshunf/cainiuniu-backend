@@ -1,6 +1,6 @@
 -- =====================================================
 -- 模型积分费率管理 菜单初始化 SQL (PostgreSQL)
--- 自动生成于: 2026-01-28 15:41:20.955243
+-- 自动生成于: 2026-01-28 17:00:23.737297
 -- 支持幂等操作：已存在则更新，不存在则新增
 -- =====================================================
 
@@ -9,31 +9,31 @@ DECLARE
     v_parent_id INTEGER;
     v_menu_id INTEGER;
 BEGIN
-    -- 查找或创建父级目录菜单 (path = /llm)
+    -- 查找或创建父级目录菜单 (path = /user_tier)
     SELECT id INTO v_parent_id FROM sys_menu 
-    WHERE path = '/llm' AND type = 0
+    WHERE path = '/user_tier' AND type = 0
     ORDER BY id LIMIT 1;
     
     IF v_parent_id IS NULL THEN
         INSERT INTO sys_menu (title, name, path, sort, icon, type, component, perms, status, display, cache, link, remark, parent_id, created_time, updated_time)
-        VALUES ('Llm', 'Llm', '/llm', 1, 'lucide:folder', 0, 'BasicLayout', NULL, 1, 1, 1, '', 'llm模块', NULL, NOW(), NULL)
+        VALUES ('User Tier', 'User_tier', '/user_tier', 1, 'lucide:folder', 0, 'BasicLayout', NULL, 1, 1, 1, '', 'user_tier模块', NULL, NOW(), NULL)
         RETURNING id INTO v_parent_id;
     END IF;
 
-    -- 查找或创建主菜单 (path = /llm/model_credit_rate)
+    -- 查找或创建主菜单 (path = /user_tier/model_credit_rate)
     SELECT id INTO v_menu_id FROM sys_menu 
-    WHERE path = '/llm/model_credit_rate' AND type = 1
+    WHERE path = '/user_tier/model_credit_rate' AND type = 1
     ORDER BY id LIMIT 1;
     
     IF v_menu_id IS NULL THEN
         INSERT INTO sys_menu (title, name, path, sort, icon, type, component, perms, status, display, cache, link, remark, parent_id, created_time, updated_time)
-        VALUES ('模型积分费率管理', 'ModelCreditRate', '/llm/model_credit_rate', 1, 'lucide:list', 1, '/llm/model_credit_rate/index', NULL, 1, 1, 1, '', '模型积分费率表 - 定义不同模型的积分消耗规则', v_parent_id, NOW(), NULL)
+        VALUES ('模型积分费率管理', 'ModelCreditRate', '/user_tier/model_credit_rate', 1, 'lucide:list', 1, '/user_tier/model_credit_rate/index', NULL, 1, 1, 1, '', '模型积分费率表 - 定义不同模型的积分消耗规则', v_parent_id, NOW(), NULL)
         RETURNING id INTO v_menu_id;
     ELSE
         UPDATE sys_menu SET
             title = '模型积分费率管理',
             name = 'ModelCreditRate',
-            component = '/llm/model_credit_rate/index',
+            component = '/user_tier/model_credit_rate/index',
             remark = '模型积分费率表 - 定义不同模型的积分消耗规则',
             parent_id = v_parent_id,
             updated_time = NOW()

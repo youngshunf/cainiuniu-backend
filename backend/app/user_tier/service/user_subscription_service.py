@@ -2,9 +2,9 @@ from typing import Any, Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.llm.crud.crud_user_subscription import user_subscription_dao
-from backend.app.llm.model import UserSubscription
-from backend.app.llm.schema.user_subscription import CreateUserSubscriptionParam, DeleteUserSubscriptionParam, UpdateUserSubscriptionParam
+from backend.app.user_tier.crud.crud_user_subscription import user_subscription_dao
+from backend.app.user_tier.model import UserSubscription
+from backend.app.user_tier.schema.user_subscription import CreateUserSubscriptionParam, DeleteUserSubscriptionParam, UpdateUserSubscriptionParam
 from backend.common.exception import errors
 from backend.common.pagination import paging_data
 

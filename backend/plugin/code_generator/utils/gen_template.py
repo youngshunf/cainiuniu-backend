@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from copy import deepcopy
 
 from jinja2 import Environment, FileSystemLoader, Template
 from pydantic.alias_generators import to_pascal
@@ -9,6 +10,13 @@ from backend.plugin.code_generator.path_conf import JINJA2_TEMPLATE_DIR
 from backend.plugin.code_generator.utils.type_conversion import sql_type_to_sqlalchemy_name
 from backend.utils.snowflake import snowflake
 from backend.utils.timezone import timezone
+
+# SQLAlchemy ORM 保留字段名，需要重命名
+SQLALCHEMY_RESERVED_NAMES = {
+    'metadata': 'meta_data',
+    'registry': 'registry_data',
+    'query': 'query_data',
+}
 
 
 class GenTemplate:
@@ -83,6 +91,33 @@ class GenTemplate:
         }
 
     @staticmethod
+    def _rename_reserved_fields(models: Sequence[GenColumn]) -> list[dict]:
+        """
+        将模型列转换为字典并重命名 SQLAlchemy 保留字段
+
+        :param models: 代码生成模型对象列表
+        :return: 转换后的字典列表
+        """
+        result = []
+        for model in models:
+            model_dict = {
+                'name': model.name,
+                'comment': model.comment,
+                'type': model.type,
+                'pd_type': model.pd_type,
+                'default': model.default,
+                'sort': model.sort,
+                'length': model.length,
+                'is_pk': model.is_pk,
+                'is_nullable': model.is_nullable,
+            }
+            # 重命名 SQLAlchemy 保留字段
+            if model.name in SQLALCHEMY_RESERVED_NAMES:
+                model_dict['name'] = SQLALCHEMY_RESERVED_NAMES[model.name]
+            result.append(model_dict)
+        return result
+
+    @staticmethod
     def get_vars(business: GenBusiness, models: Sequence[GenColumn]) -> dict[str, str | Sequence[GenColumn]]:
         """
         获取模板变量
@@ -91,6 +126,9 @@ class GenTemplate:
         :param models: 代码生成模型对象列表
         :return:
         """
+        # 将 ORM 对象转换为字典，并重命名保留字段
+        processed_models = GenTemplate._rename_reserved_fields(models)
+
         vars_dict = {
             'app_name': business.app_name,
             'table_name': business.table_name,
@@ -104,7 +142,7 @@ class GenTemplate:
             'tag': business.tag,
             'permission': business.table_name.replace('_', ':'),
             'database_type': settings.DATABASE_TYPE,
-            'models': models,
+            'models': processed_models,
             'model_types': [model.type for model in models],
             'now': timezone.now,  # Keep as callable for templates
         }

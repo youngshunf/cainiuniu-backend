@@ -1,6 +1,6 @@
 -- =====================================================
 -- 用户订阅管理 菜单初始化 SQL (PostgreSQL)
--- 自动生成于: 2026-01-28 15:18:32.115364
+-- 自动生成于: 2026-01-28 16:59:07.594475
 -- 支持幂等操作：已存在则更新，不存在则新增
 -- =====================================================
 
@@ -9,31 +9,31 @@ DECLARE
     v_parent_id INTEGER;
     v_menu_id INTEGER;
 BEGIN
-    -- 查找或创建父级目录菜单 (path = /llm)
+    -- 查找或创建父级目录菜单 (path = /user_tier)
     SELECT id INTO v_parent_id FROM sys_menu 
-    WHERE path = '/llm' AND type = 0
+    WHERE path = '/user_tier' AND type = 0
     ORDER BY id LIMIT 1;
     
     IF v_parent_id IS NULL THEN
         INSERT INTO sys_menu (title, name, path, sort, icon, type, component, perms, status, display, cache, link, remark, parent_id, created_time, updated_time)
-        VALUES ('Llm', 'Llm', '/llm', 1, 'lucide:folder', 0, 'BasicLayout', NULL, 1, 1, 1, '', 'llm模块', NULL, NOW(), NULL)
+        VALUES ('User Tier', 'User_tier', '/user_tier', 1, 'lucide:folder', 0, 'BasicLayout', NULL, 1, 1, 1, '', 'user_tier模块', NULL, NOW(), NULL)
         RETURNING id INTO v_parent_id;
     END IF;
 
-    -- 查找或创建主菜单 (path = /llm/user_subscription)
+    -- 查找或创建主菜单 (path = /user_tier/user_subscription)
     SELECT id INTO v_menu_id FROM sys_menu 
-    WHERE path = '/llm/user_subscription' AND type = 1
+    WHERE path = '/user_tier/user_subscription' AND type = 1
     ORDER BY id LIMIT 1;
     
     IF v_menu_id IS NULL THEN
         INSERT INTO sys_menu (title, name, path, sort, icon, type, component, perms, status, display, cache, link, remark, parent_id, created_time, updated_time)
-        VALUES ('用户订阅管理', 'UserSubscription', '/llm/user_subscription', 1, 'lucide:list', 1, '/llm/user_subscription/index', NULL, 1, 1, 1, '', '用户订阅表 - 管理用户的订阅等级和积分余额', v_parent_id, NOW(), NULL)
+        VALUES ('用户订阅管理', 'UserSubscription', '/user_tier/user_subscription', 1, 'lucide:list', 1, '/user_tier/user_subscription/index', NULL, 1, 1, 1, '', '用户订阅表 - 管理用户的订阅等级和积分余额', v_parent_id, NOW(), NULL)
         RETURNING id INTO v_menu_id;
     ELSE
         UPDATE sys_menu SET
             title = '用户订阅管理',
             name = 'UserSubscription',
-            component = '/llm/user_subscription/index',
+            component = '/user_tier/user_subscription/index',
             remark = '用户订阅表 - 管理用户的订阅等级和积分余额',
             parent_id = v_parent_id,
             updated_time = NOW()

@@ -1,6 +1,6 @@
 -- =====================================================
 -- 积分包配置管理 菜单初始化 SQL (PostgreSQL)
--- 自动生成于: 2026-01-28 15:32:23.637643
+-- 自动生成于: 2026-01-28 17:07:39.702771
 -- 支持幂等操作：已存在则更新，不存在则新增
 -- =====================================================
 
@@ -9,31 +9,31 @@ DECLARE
     v_parent_id INTEGER;
     v_menu_id INTEGER;
 BEGIN
-    -- 查找或创建父级目录菜单 (path = /llm)
+    -- 查找或创建父级目录菜单 (path = /user_tier)
     SELECT id INTO v_parent_id FROM sys_menu 
-    WHERE path = '/llm' AND type = 0
+    WHERE path = '/user_tier' AND type = 0
     ORDER BY id LIMIT 1;
     
     IF v_parent_id IS NULL THEN
         INSERT INTO sys_menu (title, name, path, sort, icon, type, component, perms, status, display, cache, link, remark, parent_id, created_time, updated_time)
-        VALUES ('Llm', 'Llm', '/llm', 1, 'lucide:folder', 0, 'BasicLayout', NULL, 1, 1, 1, '', 'llm模块', NULL, NOW(), NULL)
+        VALUES ('User Tier', 'User_tier', '/user_tier', 1, 'lucide:folder', 0, 'BasicLayout', NULL, 1, 1, 1, '', 'user_tier模块', NULL, NOW(), NULL)
         RETURNING id INTO v_parent_id;
     END IF;
 
-    -- 查找或创建主菜单 (path = /llm/credit_package)
+    -- 查找或创建主菜单 (path = /user_tier/credit_package)
     SELECT id INTO v_menu_id FROM sys_menu 
-    WHERE path = '/llm/credit_package' AND type = 1
+    WHERE path = '/user_tier/credit_package' AND type = 1
     ORDER BY id LIMIT 1;
     
     IF v_menu_id IS NULL THEN
         INSERT INTO sys_menu (title, name, path, sort, icon, type, component, perms, status, display, cache, link, remark, parent_id, created_time, updated_time)
-        VALUES ('积分包配置管理', 'CreditPackage', '/llm/credit_package', 1, 'lucide:list', 1, '/llm/credit_package/index', NULL, 1, 1, 1, '', '积分包配置表 - 定义可购买的积分包', v_parent_id, NOW(), NULL)
+        VALUES ('积分包配置管理', 'CreditPackage', '/user_tier/credit_package', 1, 'lucide:list', 1, '/user_tier/credit_package/index', NULL, 1, 1, 1, '', '积分包配置表 - 定义可购买的积分包', v_parent_id, NOW(), NULL)
         RETURNING id INTO v_menu_id;
     ELSE
         UPDATE sys_menu SET
             title = '积分包配置管理',
             name = 'CreditPackage',
-            component = '/llm/credit_package/index',
+            component = '/user_tier/credit_package/index',
             remark = '积分包配置表 - 定义可购买的积分包',
             parent_id = v_parent_id,
             updated_time = NOW()

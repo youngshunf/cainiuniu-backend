@@ -4,8 +4,8 @@ from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
-from backend.app.llm.model import ModelCreditRate
-from backend.app.llm.schema.model_credit_rate import CreateModelCreditRateParam, UpdateModelCreditRateParam
+from backend.app.user_tier.model import ModelCreditRate
+from backend.app.user_tier.schema.model_credit_rate import CreateModelCreditRateParam, UpdateModelCreditRateParam
 
 
 class CRUDModelCreditRate(CRUDPlus[ModelCreditRate]):

@@ -2,13 +2,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query
 
-from backend.app.llm.schema.credit_transaction import (
+from backend.app.user_tier.schema.credit_transaction import (
     CreateCreditTransactionParam,
     DeleteCreditTransactionParam,
     GetCreditTransactionDetail,
     UpdateCreditTransactionParam,
 )
-from backend.app.llm.service.credit_transaction_service import credit_transaction_service
+from backend.app.user_tier.service.credit_transaction_service import credit_transaction_service
 from backend.common.pagination import DependsPagination, PageData
 from backend.common.response.response_schema import ResponseModel, ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth
