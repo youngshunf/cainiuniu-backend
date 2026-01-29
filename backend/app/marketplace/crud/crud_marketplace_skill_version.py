@@ -1,6 +1,6 @@
 from typing import Sequence
 
-from sqlalchemy import Select
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
@@ -98,7 +98,14 @@ class CRUDMarketplaceSkillVersion(CRUDPlus[MarketplaceSkillVersion]):
         :param skill_id: 技能ID
         :return:
         """
-        return await self.select_models_by_column(db, skill_id=skill_id)
+        stmt = select(MarketplaceSkillVersion).where(
+            MarketplaceSkillVersion.skill_id == skill_id
+        ).order_by(MarketplaceSkillVersion.id.desc())
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
+    # 别名，兼容公开 API
+    get_by_skill = get_versions_by_skill
 
 
 marketplace_skill_version_dao: CRUDMarketplaceSkillVersion = CRUDMarketplaceSkillVersion(MarketplaceSkillVersion)
