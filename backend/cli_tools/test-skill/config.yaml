@@ -1,0 +1,10 @@
+id: test-skill
+name: 测试技能
+version: 1.0.0
+description: 这是一个用于测试 CLI 发布功能的技能
+category: 测试
+tags: 测试,示例,demo
+pricing: free
+author:
+  name: fba Team
+  email: team@fba.ai

@@ -32,12 +32,12 @@ class MarketplaceStorageService:
         if storage_id:
             s3_storage = await s3_storage_dao.get(db, storage_id)
         else:
-            # 获取默认存储（第一个启用的存储）
+            # 获取默认存储（第一个存储配置）
             storages = await s3_storage_dao.get_all(db)
-            s3_storage = next((s for s in storages if s.enabled), None)
+            s3_storage = storages[0] if storages else None
         
         if not s3_storage:
-            raise errors.NotFoundError(msg='S3 存储配置不存在')
+            raise errors.NotFoundError(msg='S3 存储配置不存在，请先在管理后台配置存储')
         
         return AsyncOperator(
             's3',
@@ -85,12 +85,7 @@ class MarketplaceStorageService:
         await op.write(path, content)
         
         # 构建下载 URL
-        bucket_path = f'/{s3_storage.bucket}'
-        if s3_storage.prefix:
-            prefix = s3_storage.prefix if s3_storage.prefix.startswith('/') else f'/{s3_storage.prefix}'
-            package_url = f'{s3_storage.endpoint}{bucket_path}{prefix}/{path}'
-        else:
-            package_url = f'{s3_storage.endpoint}{bucket_path}/{path}'
+        package_url = self._build_url(s3_storage, path)
         
         return package_url, file_hash, file_size
     
@@ -125,14 +120,32 @@ class MarketplaceStorageService:
         await op.write(path, content)
         
         # 构建下载 URL
+        package_url = self._build_url(s3_storage, path)
+        
+        return package_url, file_hash, file_size
+    
+    def _build_url(self, s3_storage, path: str) -> str:
+        """
+        构建文件访问 URL
+        
+        :param s3_storage: 存储配置
+        :param path: 文件路径
+        :return: 完整 URL
+        """
+        # 如果配置了 CDN 域名，优先使用
+        if s3_storage.cdn_domain:
+            base_url = s3_storage.cdn_domain.rstrip('/')
+            if s3_storage.prefix:
+                prefix = s3_storage.prefix.strip('/')
+                return f'{base_url}/{prefix}/{path}'
+            return f'{base_url}/{path}'
+        
+        # 使用 S3 原始 URL
         bucket_path = f'/{s3_storage.bucket}'
         if s3_storage.prefix:
             prefix = s3_storage.prefix if s3_storage.prefix.startswith('/') else f'/{s3_storage.prefix}'
-            package_url = f'{s3_storage.endpoint}{bucket_path}{prefix}/{path}'
-        else:
-            package_url = f'{s3_storage.endpoint}{bucket_path}/{path}'
-        
-        return package_url, file_hash, file_size
+            return f'{s3_storage.endpoint}{bucket_path}{prefix}/{path}'
+        return f'{s3_storage.endpoint}{bucket_path}/{path}'
     
     async def upload_icon(
         self,
@@ -162,14 +175,7 @@ class MarketplaceStorageService:
         await op.write(path, content)
         
         # 构建 URL
-        bucket_path = f'/{s3_storage.bucket}'
-        if s3_storage.prefix:
-            prefix = s3_storage.prefix if s3_storage.prefix.startswith('/') else f'/{s3_storage.prefix}'
-            icon_url = f'{s3_storage.endpoint}{bucket_path}{prefix}/{path}'
-        else:
-            icon_url = f'{s3_storage.endpoint}{bucket_path}/{path}'
-        
-        return icon_url
+        return self._build_url(s3_storage, path)
     
     async def download_package(
         self,

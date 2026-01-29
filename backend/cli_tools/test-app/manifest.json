@@ -1,0 +1,26 @@
+{
+  "id": "app.test-demo",
+  "name": "测试应用",
+  "version": "1.0.0",
+  "description": "这是一个用于测试 CLI 发布功能的应用",
+  "author": {
+    "name": "fba Team",
+    "email": "team@fba.ai"
+  },
+  "pricing": {
+    "type": "free"
+  },
+  "skillDependencies": [
+    "test-skill@^1.0.0"
+  ],
+  "workspace": {
+    "directoryStructure": {
+      "数据": {},
+      "输出": {}
+    }
+  },
+  "marketplace": {
+    "category": "测试",
+    "tags": ["测试", "示例", "demo"]
+  }
+}

@@ -58,6 +58,14 @@ except ImportError:
     CodegenGenerate = None
     GenerateAll = None
 
+# Import marketplace CLI commands
+try:
+    from backend.cli_tools.cli.skill import Skill as SkillCmd
+    from backend.cli_tools.cli.app import App as AppCmd
+except ImportError:
+    SkillCmd = None
+    AppCmd = None
+
 output_help = '\n更多信息，尝试 "[cyan]--help[/]"'
 
 
@@ -680,7 +688,7 @@ class FbaCli:
         str,
         cappa.Arg(value_name='PATH', default='', show_default=False, help='在事务中执行 SQL 脚本'),
     ]
-    subcmd: cappa.Subcommands[Init | Run | Celery | Add | CodeGenerator | None] = None
+    subcmd: cappa.Subcommands[Init | Run | Celery | Add | CodeGenerator | SkillCmd | AppCmd | None] = None
 
     async def __call__(self) -> None:
         if self.sql:
