@@ -93,8 +93,8 @@ install_system_deps() {
         log_warn "需要 root 权限安装系统依赖，请手动安装："
         echo "  sudo apt update"
         echo "  sudo apt install -y python3.10 python3.10-venv python3.10-dev python3-pip"
-        echo "  sudo apt install -y build-essential libmysqlclient-dev pkg-config"
-        echo "  sudo apt install -y supervisor nginx redis-tools mysql-client"
+        echo "  sudo apt install -y build-essential libpq-dev pkg-config"
+        echo "  sudo apt install -y supervisor nginx redis-tools postgresql-client"
         return
     fi
     
@@ -103,27 +103,13 @@ install_system_deps() {
     
     # 安装 Python 和开发工具
     apt install -y python$PYTHON_VERSION python$PYTHON_VERSION-venv python$PYTHON_VERSION-dev python3-pip
-    apt install -y build-essential libmysqlclient-dev pkg-config
+    apt install -y build-essential libpq-dev pkg-config
     
     # 安装进程管理
     apt install -y supervisor
     
     # 安装数据库客户端（用于测试连接）
-    apt install -y redis-tools
-    
-    # 检查并安装 MySQL 客户端（避免包冲突）
-    if ! command -v mysql &> /dev/null; then
-        # 尝试安装 MySQL 客户端，如果失败则跳过
-        apt install -y mysql-client 2>/dev/null || {
-            log_warn "MySQL 客户端安装失败，可能存在包冲突"
-            log_info "尝试安装 MariaDB 客户端..."
-            apt install -y mariadb-client 2>/dev/null || {
-                log_warn "数据库客户端安装失败，将跳过数据库连接测试"
-            }
-        }
-    else
-        log_info "MySQL 客户端已安装"
-    fi
+    apt install -y redis-tools postgresql-client
     
     log_info "✅ 系统依赖安装完成"
 }
@@ -199,7 +185,7 @@ setup_python_env() {
     export PYTHONPATH="$PROJECT_DIR/backend:$PYTHONPATH"
     
     # 检查关键 Python 包
-    local critical_packages=("fastapi" "uvicorn" "celery" "flower" "loguru" "pydantic_settings" "redis" "pymysql" "sqlalchemy")
+    local critical_packages=("fastapi" "uvicorn" "celery" "flower" "loguru" "pydantic_settings" "redis" "psycopg" "sqlalchemy")
     local missing_deps=()
     
     for package in "${critical_packages[@]}"; do
@@ -286,16 +272,24 @@ setup_config() {
     # 复制生产配置
     cp backend/.env.prod backend/.env
     
-    # 创建数据库
-    log_info "创建数据库..."
+    # 创建数据库（PostgreSQL）
+    log_info "检查数据库连接..."
     source backend/.env
     db_host=$(echo $DATABASE_HOST | tr -d "'\"")
     db_port=$(echo $DATABASE_PORT | tr -d "'\"")
     db_user=$(echo $DATABASE_USER | tr -d "'\"")
-    db_pass=$(echo $DATABASE_PASSWORD | tr -d "'\"")
+    db_name=$(echo $DATABASE_SCHEMA | tr -d "'\"")
     
-    mysql -h "$db_host" -P "$db_port" -u "$db_user" -p"$db_pass" -e "CREATE DATABASE IF NOT EXISTS fba CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>/dev/null || log_warn "创建 fba 数据库失败"
-    mysql -h "$db_host" -P "$db_port" -u "$db_user" -p"$db_pass" -e "CREATE DATABASE IF NOT EXISTS lottery CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>/dev/null || log_warn "创建 lottery 数据库失败"
+    # 测试 PostgreSQL 连接
+    if command -v psql &> /dev/null; then
+        if PGPASSWORD="$DATABASE_PASSWORD" psql -h "$db_host" -p "$db_port" -U "$db_user" -d "$db_name" -c "SELECT 1" &>/dev/null; then
+            log_info "✅ PostgreSQL 连接成功"
+        else
+            log_warn "⚠️ PostgreSQL 连接失败，请检查数据库配置"
+        fi
+    else
+        log_warn "psql 客户端未安装，跳过数据库连接测试"
+    fi
     
     log_info "✅ 配置完成"
 }
