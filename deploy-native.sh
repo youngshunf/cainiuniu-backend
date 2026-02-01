@@ -85,33 +85,34 @@ check_system() {
     log_info "✅ 系统环境检查完成"
 }
 
-# 安装系统依赖
+# 安装系统依赖（不包括 Python，Python 由 uv 管理）
 install_system_deps() {
     log_step "安装系统依赖..."
     
     if [ "$USER" != "root" ]; then
         log_warn "需要 root 权限安装系统依赖，请手动安装："
         echo "  sudo apt update"
-        echo "  sudo apt install -y python3.10 python3.10-venv python3.10-dev python3-pip"
-        echo "  sudo apt install -y build-essential libpq-dev pkg-config"
-        echo "  sudo apt install -y supervisor nginx redis-tools postgresql-client"
+        echo "  sudo apt install -y build-essential libpq-dev pkg-config curl"
+        echo "  sudo apt install -y supervisor redis-tools postgresql-client"
+        echo ""
+        echo "  # Python 由 uv 自动管理，无需手动安装"
         return
     fi
     
     # 更新包列表
     apt update
     
-    # 安装 Python 和开发工具
-    apt install -y python$PYTHON_VERSION python$PYTHON_VERSION-venv python$PYTHON_VERSION-dev python3-pip
-    apt install -y build-essential libpq-dev pkg-config
+    # 安装基础开发工具（编译依赖）
+    apt install -y build-essential libpq-dev pkg-config curl
     
     # 安装进程管理
     apt install -y supervisor
     
     # 安装数据库客户端（用于测试连接）
-    apt install -y redis-tools postgresql-client
+    apt install -y redis-tools postgresql-client 2>/dev/null || log_warn "数据库客户端安装失败，跳过"
     
     log_info "✅ 系统依赖安装完成"
+    log_info "   Python 将由 uv 自动下载并管理"
 }
 
 # 设置 Python 环境（使用 uv 管理）
