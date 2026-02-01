@@ -13,3 +13,6 @@ venv/
 # FBA CLI config (contains API keys)
 .fba.yaml
 .fba.yml
+
+# Production env (contains secrets)
+backend/.env.prod
