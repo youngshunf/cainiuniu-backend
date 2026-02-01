@@ -1,5 +1,5 @@
 #!/bin/bash
-# Lottery-Predict 原生部署脚本（不使用 Docker）
+# Clound-Backend 原生部署脚本（不使用 Docker）
 
 set -e
 
@@ -28,11 +28,15 @@ log_step() {
 
 # 配置变量
 PROJECT_DIR="$(pwd)"
-# 动态设置服务用户：root 用户运行时使用 root，否则使用 lottery
+SERVICE_NAME="creator-flow-backend"
+DEPLOY_BRANCH="creator-flow"
+API_PORT="8020"
+FLOWER_PORT="8555"
+# 动态设置服务用户：root 用户运行时使用 root，否则使用 www-data
 if [ "$USER" = "root" ] || [ "$(id -u)" = "0" ]; then
     SERVICE_USER="root"
 else
-    SERVICE_USER="lottery"
+    SERVICE_USER="www-data"
 fi
 PYTHON_VERSION="3.10"
 VENV_DIR="$PROJECT_DIR/.venv"
@@ -52,17 +56,18 @@ check_system() {
         exit 1
     fi
     
-    # 检查用户（允许 root 或 lottery 用户）
-    if [ "$USER" != "root" ] && [ "$(id -u)" != "0" ] && [ "$USER" != "lottery" ]; then
-        log_error "请使用 root 或 lottery 用户运行此脚本"
-        exit 1
+    # 检查用户（允许 root 或具有 sudo 权限的用户）
+    if [ "$USER" != "root" ] && [ "$(id -u)" != "0" ]; then
+        if ! sudo -n true 2>/dev/null; then
+            log_warn "当前用户可能需要 sudo 权限来配置 Supervisor"
+        fi
     fi
     
     log_info "当前运行用户: $USER, 服务用户: $SERVICE_USER"
     
     # 检查项目目录和文件
     if [ ! -f "backend/main.py" ]; then
-        log_error "请在 lottery-predict 项目根目录运行此脚本"
+        log_error "请在 clound-backend 项目根目录运行此脚本"
         log_error "当前目录: $(pwd)"
         exit 1
     fi
@@ -373,9 +378,9 @@ setup_supervisor() {
     log_step "配置 Supervisor..."
     
     # FastAPI 服务配置 - 使用 fba run 命令
-    sudo tee /etc/supervisor/conf.d/lottery-predict-api.conf > /dev/null << EOF
-[program:lottery-predict-api]
-command=$VENV_DIR/bin/fba run --host 0.0.0.0 --port 8001 --no-reload --workers 1
+    sudo tee /etc/supervisor/conf.d/${SERVICE_NAME}-api.conf > /dev/null << EOF
+[program:${SERVICE_NAME}-api]
+command=$VENV_DIR/bin/fba run --host 0.0.0.0 --port $API_PORT --no-reload --workers 1
 directory=$PROJECT_DIR
 user=$SERVICE_USER
 autostart=true
@@ -389,10 +394,10 @@ startsecs=10
 startretries=3
 EOF
 
-    # Celery Worker 配置 - 参考 start_celery.sh
-    sudo tee /etc/supervisor/conf.d/lottery-predict-worker.conf > /dev/null << EOF
-[program:lottery-predict-worker]
-command=$VENV_DIR/bin/celery -A backend.app.task.celery:celery_app worker -l info -c 16 -Q celery,predict
+    # Celery Worker 配置
+    sudo tee /etc/supervisor/conf.d/${SERVICE_NAME}-worker.conf > /dev/null << EOF
+[program:${SERVICE_NAME}-worker]
+command=$VENV_DIR/bin/celery -A backend.app.task.celery:celery_app worker -l info -c 4 -Q celery
 directory=$PROJECT_DIR
 user=$SERVICE_USER
 autostart=true
@@ -409,9 +414,9 @@ startsecs=10
 startretries=3
 EOF
 
-    # Celery Beat 配置 - 参考 start_celery_beat.sh
-    sudo tee /etc/supervisor/conf.d/lottery-predict-beat.conf > /dev/null << EOF
-[program:lottery-predict-beat]
+    # Celery Beat 配置
+    sudo tee /etc/supervisor/conf.d/${SERVICE_NAME}-beat.conf > /dev/null << EOF
+[program:${SERVICE_NAME}-beat]
 command=$VENV_DIR/bin/celery -A backend.app.task.celery:celery_app beat -l info
 directory=$PROJECT_DIR
 user=$SERVICE_USER
@@ -430,9 +435,9 @@ startretries=3
 EOF
 
     # Celery Flower 配置
-    sudo tee /etc/supervisor/conf.d/lottery-predict-flower.conf > /dev/null << EOF
-[program:lottery-predict-flower]
-command=$VENV_DIR/bin/celery -A backend.app.task.celery:celery_app flower --port=8555 --basic-auth=admin:123456
+    sudo tee /etc/supervisor/conf.d/${SERVICE_NAME}-flower.conf > /dev/null << EOF
+[program:${SERVICE_NAME}-flower]
+command=$VENV_DIR/bin/celery -A backend.app.task.celery:celery_app flower --port=$FLOWER_PORT --basic-auth=admin:123456
 directory=$PROJECT_DIR
 user=$SERVICE_USER
 autostart=true
@@ -462,7 +467,7 @@ EOF
     
     # 验证配置是否加载成功
     log_info "验证服务配置..."
-    if sudo supervisorctl status | grep -q "lottery-predict"; then
+    if sudo supervisorctl status | grep -q "$SERVICE_NAME"; then
         log_info "✅ Supervisor 配置加载成功"
     else
         log_warn "⚠️  Supervisor 配置可能未正确加载"
@@ -478,9 +483,9 @@ show_nginx_config() {
     echo ""
     echo "📝 请在服务器统一 Nginx 中添加以下配置："
     echo ""
-    echo "# Lottery-Predict 服务配置"
-    echo "location /lottery-predict/ {"
-    echo "    proxy_pass http://127.0.0.1:8001/;"
+    echo "# Clound-Backend 服务配置"
+    echo "location /api/ {"
+    echo "    proxy_pass http://127.0.0.1:$API_PORT/;"
     echo "    proxy_set_header Host \$host;"
     echo "    proxy_set_header X-Real-IP \$remote_addr;"
     echo "    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;"
@@ -491,15 +496,15 @@ show_nginx_config() {
     echo "}"
     echo ""
     echo "# 静态文件配置"
-    echo "location /lottery-predict/static/ {"
+    echo "location /static/ {"
     echo "    alias $PROJECT_DIR/backend/static/;"
     echo "    expires 30d;"
     echo "    add_header Cache-Control \"public, immutable\";"
     echo "}"
     echo ""
     echo "# Flower 监控配置"
-    echo "location /lottery-predict/flower/ {"
-    echo "    proxy_pass http://127.0.0.1:8555/;"
+    echo "location /flower/ {"
+    echo "    proxy_pass http://127.0.0.1:$FLOWER_PORT/;"
     echo "    proxy_set_header Host \$host;"
     echo "    proxy_set_header X-Real-IP \$remote_addr;"
     echo "    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;"
@@ -517,10 +522,10 @@ stop_existing_services() {
         log_info "停止现有的应用服务..."
         
         # 停止所有相关服务
-        sudo supervisorctl stop lottery-predict-api 2>/dev/null || true
-        sudo supervisorctl stop lottery-predict-worker 2>/dev/null || true
-        sudo supervisorctl stop lottery-predict-beat 2>/dev/null || true
-        sudo supervisorctl stop lottery-predict-flower 2>/dev/null || true
+        sudo supervisorctl stop ${SERVICE_NAME}-api 2>/dev/null || true
+        sudo supervisorctl stop ${SERVICE_NAME}-worker 2>/dev/null || true
+        sudo supervisorctl stop ${SERVICE_NAME}-beat 2>/dev/null || true
+        sudo supervisorctl stop ${SERVICE_NAME}-flower 2>/dev/null || true
         
         log_info "等待服务完全停止..."
         sleep 3
@@ -555,10 +560,10 @@ start_services() {
     
     # 启动所有服务
     log_info "启动应用服务..."
-    sudo supervisorctl start lottery-predict-api || log_warn "API 服务启动失败"
-    sudo supervisorctl start lottery-predict-worker || log_warn "Worker 服务启动失败"
-    sudo supervisorctl start lottery-predict-beat || log_warn "Beat 服务启动失败"
-    sudo supervisorctl start lottery-predict-flower || log_warn "Flower 服务启动失败"
+    sudo supervisorctl start ${SERVICE_NAME}-api || log_warn "API 服务启动失败"
+    sudo supervisorctl start ${SERVICE_NAME}-worker || log_warn "Worker 服务启动失败"
+    sudo supervisorctl start ${SERVICE_NAME}-beat || log_warn "Beat 服务启动失败"
+    sudo supervisorctl start ${SERVICE_NAME}-flower || log_warn "Flower 服务启动失败"
     
     # 等待服务启动
     log_info "等待服务启动..."
@@ -617,8 +622,8 @@ check_services() {
     # 测试 API 服务
     local api_attempts=0
     while [ $api_attempts -lt 3 ]; do
-        if curl -s -f http://localhost:8001/docs > /dev/null 2>&1; then
-            log_info "✅ API 服务正常 (http://localhost:8001)"
+        if curl -s -f http://localhost:$API_PORT/docs > /dev/null 2>&1; then
+            log_info "✅ API 服务正常 (http://localhost:$API_PORT)"
             break
         else
             api_attempts=$((api_attempts + 1))
@@ -627,7 +632,7 @@ check_services() {
                 sleep 5
             else
                 log_warn "❌ API 服务异常，检查端口占用..."
-                netstat -tlnp | grep :8001 || log_warn "端口 8001 未被占用"
+                netstat -tlnp | grep :$API_PORT || log_warn "端口 $API_PORT 未被占用"
                 
                 # 显示 API 服务日志
                 echo ""
@@ -640,8 +645,8 @@ check_services() {
     # 测试 Flower
     local flower_attempts=0
     while [ $flower_attempts -lt 3 ]; do
-        if curl -s -f http://localhost:8555 > /dev/null 2>&1; then
-            log_info "✅ Flower 监控正常 (http://localhost:8555)"
+        if curl -s -f http://localhost:$FLOWER_PORT > /dev/null 2>&1; then
+            log_info "✅ Flower 监控正常 (http://localhost:$FLOWER_PORT)"
             break
         else
             flower_attempts=$((flower_attempts + 1))
@@ -660,12 +665,12 @@ show_deployment_info() {
     log_step "部署完成！"
     
     echo ""
-    echo "🎉 Lottery-Predict 一键部署成功！"
+    echo "🎉 Clound-Backend 一键部署成功！"
     echo ""
     echo "📋 服务信息："
-    echo "   🌐 API 服务: http://localhost:8001"
-    echo "   📚 API 文档: http://localhost:8001/docs"
-    echo "   🌸 Flower 监控: http://localhost:8555"
+    echo "   🌐 API 服务: http://localhost:$API_PORT"
+    echo "   📚 API 文档: http://localhost:$API_PORT/docs"
+    echo "   🌸 Flower 监控: http://localhost:$FLOWER_PORT"
     echo ""
     echo "📁 重要目录："
     echo "   项目目录: $PROJECT_DIR"
@@ -684,7 +689,7 @@ show_deployment_info() {
 
     echo ""
     echo "📝 配置文件："
-    echo "   Supervisor: /etc/supervisor/conf.d/lottery-predict-*.conf"
+    echo "   Supervisor: /etc/supervisor/conf.d/${SERVICE_NAME}-*.conf"
     echo "   环境变量: $PROJECT_DIR/backend/.env"
     echo ""
 }
@@ -825,9 +830,15 @@ update_code() {
         git stash push -m "Auto stash before update $(date '+%Y-%m-%d %H:%M:%S')"
     fi
     
-    # 拉取最新代码
-    log_info "拉取最新代码..."
-    if git pull origin release; then
+    # 切换到部署分支并拉取最新代码
+    log_info "切换到部署分支: $DEPLOY_BRANCH"
+    git checkout "$DEPLOY_BRANCH" || {
+        log_error "无法切换到分支 $DEPLOY_BRANCH"
+        exit 1
+    }
+    
+    log_info "拉取最新代码 (分支: $DEPLOY_BRANCH)..."
+    if git pull origin "$DEPLOY_BRANCH"; then
         log_info "✅ 代码更新成功"
     else
         log_error "❌ 代码更新失败"
@@ -911,7 +922,7 @@ update_service() {
 
 # 显示帮助
 show_help() {
-    echo "Lottery-Predict 一键部署脚本"
+    echo "Clound-Backend 一键部署脚本"
     echo ""
     echo "用法: $0 [选项]"
     echo ""
@@ -926,10 +937,10 @@ show_help() {
     echo "  -h, --help        显示帮助信息"
     echo ""
     echo "📋 服务组件:"
-    echo "  - FastAPI 应用服务器 (端口 8001)"
+    echo "  - FastAPI 应用服务器 (端口 $API_PORT)"
     echo "  - Celery Worker 任务处理"
     echo "  - Celery Beat 定时任务"
-    echo "  - Celery Flower 监控 (端口 8555)"
+    echo "  - Celery Flower 监控 (端口 $FLOWER_PORT)"
     echo ""
     echo "💡 使用场景:"
     echo "  首次部署:     ./deploy-native.sh --init"
@@ -969,10 +980,10 @@ restart_services() {
     sudo supervisorctl update
     
     # 重启服务
-    sudo supervisorctl restart lottery-predict-api || log_warn "API 服务重启失败"
-    sudo supervisorctl restart lottery-predict-worker || log_warn "Worker 服务重启失败"
-    sudo supervisorctl restart lottery-predict-beat || log_warn "Beat 服务重启失败"
-    sudo supervisorctl restart lottery-predict-flower || log_warn "Flower 服务重启失败"
+    sudo supervisorctl restart ${SERVICE_NAME}-api || log_warn "API 服务重启失败"
+    sudo supervisorctl restart ${SERVICE_NAME}-worker || log_warn "Worker 服务重启失败"
+    sudo supervisorctl restart ${SERVICE_NAME}-beat || log_warn "Beat 服务重启失败"
+    sudo supervisorctl restart ${SERVICE_NAME}-flower || log_warn "Flower 服务重启失败"
     
     sleep 5
     check_services
@@ -983,10 +994,10 @@ restart_services() {
 stop_services() {
     log_step "停止所有服务..."
     
-    sudo supervisorctl stop lottery-predict-api
-    sudo supervisorctl stop lottery-predict-worker
-    sudo supervisorctl stop lottery-predict-beat
-    sudo supervisorctl stop lottery-predict-flower
+    sudo supervisorctl stop ${SERVICE_NAME}-api
+    sudo supervisorctl stop ${SERVICE_NAME}-worker
+    sudo supervisorctl stop ${SERVICE_NAME}-beat
+    sudo supervisorctl stop ${SERVICE_NAME}-flower
     
     log_info "✅ 服务已停止"
 }
@@ -999,7 +1010,7 @@ main() {
             exit 0
             ;;
         --init)
-            log_info "🚀 开始初始化 Lottery-Predict 环境..."
+            log_info "🚀 开始初始化 Clound-Backend 环境..."
             check_system
             init_environment
             start_services
@@ -1008,7 +1019,7 @@ main() {
             show_deployment_info
             ;;
         --update)
-            log_info "🔄 开始更新 Lottery-Predict 服务..."
+            log_info "🔄 开始更新 Clound-Backend 服务..."
             check_system
             update_service
             check_services
