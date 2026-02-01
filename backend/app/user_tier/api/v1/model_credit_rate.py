@@ -74,6 +74,23 @@ async def update_model_credit_rate(
 
 
 @router.delete(
+    '/{pk}',
+    summary='删除模型积分费率',
+    dependencies=[
+        Depends(RequestPermission('model:credit:rate:del')),
+        DependsRBAC,
+    ],
+)
+async def delete_model_credit_rate(
+    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='模型积分费率 ID')]
+) -> ResponseModel:
+    count = await model_credit_rate_service.delete(db=db, obj=DeleteModelCreditRateParam(pks=[pk]))
+    if count > 0:
+        return response_base.success()
+    return response_base.fail()
+
+
+@router.delete(
     '',
     summary='批量删除模型积分费率',
     dependencies=[

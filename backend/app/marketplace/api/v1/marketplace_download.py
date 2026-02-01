@@ -71,6 +71,23 @@ async def update_marketplace_download(
 
 
 @router.delete(
+    '/{pk}',
+    summary='删除用户下载记录',
+    dependencies=[
+        Depends(RequestPermission('marketplace:download:del')),
+        DependsRBAC,
+    ],
+)
+async def delete_marketplace_download(
+    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='用户下载记录 ID')]
+) -> ResponseModel:
+    count = await marketplace_download_service.delete(db=db, obj=DeleteMarketplaceDownloadParam(pks=[pk]))
+    if count > 0:
+        return response_base.success()
+    return response_base.fail()
+
+
+@router.delete(
     '',
     summary='批量删除用户下载记录',
     dependencies=[

@@ -71,6 +71,23 @@ async def update_project_topics(
 
 
 @router.delete(
+    '/{pk}',
+    summary='删除项目私有选题',
+    dependencies=[
+        Depends(RequestPermission('project:topics:del')),
+        DependsRBAC,
+    ],
+)
+async def delete_project_topics(
+    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='项目私有选题 ID')]
+) -> ResponseModel:
+    count = await project_topics_service.delete(db=db, obj=DeleteProjectTopicsParam(pks=[pk]))
+    if count > 0:
+        return response_base.success()
+    return response_base.fail()
+
+
+@router.delete(
     '',
     summary='批量删除项目私有选题',
     dependencies=[

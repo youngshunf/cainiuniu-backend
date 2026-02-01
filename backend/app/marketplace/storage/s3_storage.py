@@ -153,6 +153,7 @@ class MarketplaceStorageService:
         item_type: str,  # 'skill' or 'app'
         item_id: str,
         content: bytes,
+        version: str | None = None,
         storage_id: int | None = None,
     ) -> str:
         """
@@ -162,14 +163,18 @@ class MarketplaceStorageService:
         :param item_type: 类型 (skill/app)
         :param item_id: 技能或应用ID
         :param content: 图标内容
+        :param version: 版本号（用于避免 CDN 缓存）
         :param storage_id: 存储配置ID
         :return: icon_url
         """
         op, s3_storage = await self._get_operator(db, storage_id)
         
-        # 构建存储路径
+        # 构建存储路径（带版本后缀避免 CDN 缓存）
         base_path = self.SKILLS_PATH if item_type == 'skill' else self.APPS_PATH
-        path = f'{base_path}/{item_id}/icon.svg'
+        if version:
+            path = f'{base_path}/{item_id}/icon-{version}.svg'
+        else:
+            path = f'{base_path}/{item_id}/icon.svg'
         
         # 上传文件
         await op.write(path, content)

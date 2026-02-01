@@ -91,12 +91,16 @@ class SkillPublisher:
                 error=f'版本 {final_version} 已存在，请使用其他版本号'
             )
         
-        # 4. 打包
+        # 4. 打包前更新 config.yaml 版本号（确保包内版本与数据库一致）
+        if config.version != final_version:
+            self._update_config_version(final_version)
+        
+        # 5. 打包
         print_info(f'打包技能 (v{final_version})...')
         package_result = self.packager.package()
         print_success(f'打包完成: {package_result.file_count} 个文件, {format_size(package_result.file_size)}')
         
-        # 5. 上传到 S3
+        # 6. 上传到 S3
         print_info('上传到存储...')
         try:
             package_url, file_hash, file_size = await marketplace_storage_service.upload_skill_package(
@@ -109,7 +113,7 @@ class SkillPublisher:
         except Exception as e:
             return PublishResult(success=False, error=f'上传失败: {e}')
         
-        # 6. 上传图标
+        # 7. 上传图标（带版本后缀避免 CDN 缓存）
         icon_path = self.skill_path / 'icon.svg'
         if icon_path.exists():
             print_info('上传图标...')
@@ -120,6 +124,7 @@ class SkillPublisher:
                     item_type='skill',
                     item_id=skill_id,
                     content=icon_content,
+                    version=final_version,
                 )
                 print_success('图标上传完成')
             except Exception as e:
@@ -128,7 +133,7 @@ class SkillPublisher:
         else:
             icon_url = None
         
-        # 7. 创建/更新数据库记录
+        # 8. 创建/更新数据库记录
         print_info('更新数据库...')
         try:
             # 检查技能是否已存在
@@ -205,6 +210,32 @@ class SkillPublisher:
         # 使用配置中的版本号
         return config_version
     
+    def _update_config_version(self, version: str) -> None:
+        """更新 config.yaml 中的版本号"""
+        config_path = self.skill_path / 'config.yaml'
+        if not config_path.exists():
+            return
+        
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # 使用正则替换 version 字段
+            import re
+            new_content = re.sub(
+                r'^version:\s*.+$',
+                f'version: {version}',
+                content,
+                flags=re.MULTILINE
+            )
+            
+            with open(config_path, 'w', encoding='utf-8') as f:
+                f.write(new_content)
+            
+            print_info(f'已更新 config.yaml 版本号为 {version}')
+        except Exception as e:
+            print_error(f'更新 config.yaml 版本号失败: {e}')
+    
     async def _get_skill(self, db: AsyncSession, skill_id: str) -> MarketplaceSkill | None:
         """获取技能"""
         stmt = select(MarketplaceSkill).where(MarketplaceSkill.skill_id == skill_id)
@@ -232,6 +263,8 @@ class SkillPublisher:
     async def _create_skill(self, db: AsyncSession, config, icon_url: str | None) -> None:
         """创建新技能"""
         from decimal import Decimal
+        # tags 是列表时转换为逗号分隔的字符串
+        tags = ','.join(config.tags) if isinstance(config.tags, list) else config.tags
         skill = MarketplaceSkill(
             skill_id=config.id,
             name=config.name,
@@ -239,7 +272,7 @@ class SkillPublisher:
             icon_url=icon_url,
             author_name=config.author_name,
             category=config.category,
-            tags=config.tags,
+            tags=tags,
             pricing_type=config.pricing,
             price=Decimal('0'),
             is_private=False,
@@ -251,11 +284,13 @@ class SkillPublisher:
     
     async def _update_skill(self, db: AsyncSession, skill_id: str, config, icon_url: str | None) -> None:
         """更新已有技能"""
+        # tags 是列表时转换为逗号分隔的字符串
+        tags = ','.join(config.tags) if isinstance(config.tags, list) else config.tags
         update_data = {
             'name': config.name,
             'description': config.description,
             'category': config.category,
-            'tags': config.tags,
+            'tags': tags,
             'pricing_type': config.pricing,
         }
         if icon_url:

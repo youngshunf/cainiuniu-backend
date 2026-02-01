@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query
@@ -37,8 +38,22 @@ async def get_user_credit_balance(
 )
 async def get_user_credit_balances_paginated(
     db: CurrentSession,
+    user_keyword: Annotated[str | None, Query(description='用户昵称/手机号搜索')] = None,
+    credit_type: Annotated[str | None, Query(description='积分类型')] = None,
+    expires_at: Annotated[list[date] | None, Query(description='过期时间范围')] = None,
+    granted_at: Annotated[list[date] | None, Query(description='发放时间范围')] = None,
+    source_type: Annotated[str | None, Query(description='来源类型')] = None,
+    source_reference_id: Annotated[str | None, Query(description='关联订单号')] = None,
 ) -> ResponseSchemaModel[PageData[GetUserCreditBalanceDetail]]:
-    page_data = await user_credit_balance_service.get_list(db=db)
+    page_data = await user_credit_balance_service.get_list(
+        db=db,
+        user_keyword=user_keyword,
+        credit_type=credit_type,
+        expires_at=expires_at,
+        granted_at=granted_at,
+        source_type=source_type,
+        source_reference_id=source_reference_id,
+    )
     return response_base.success(data=page_data)
 
 
@@ -69,6 +84,23 @@ async def update_user_credit_balance(
     obj: UpdateUserCreditBalanceParam,
 ) -> ResponseModel:
     count = await user_credit_balance_service.update(db=db, pk=pk, obj=obj)
+    if count > 0:
+        return response_base.success()
+    return response_base.fail()
+
+
+@router.delete(
+    '/{pk}',
+    summary='删除用户积分余额',
+    dependencies=[
+        Depends(RequestPermission('user:credit:balance:del')),
+        DependsRBAC,
+    ],
+)
+async def delete_user_credit_balance(
+    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='用户积分余额 ID')]
+) -> ResponseModel:
+    count = await user_credit_balance_service.delete(db=db, obj=DeleteUserCreditBalanceParam(pks=[pk]))
     if count > 0:
         return response_base.success()
     return response_base.fail()

@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Any, Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,15 +26,31 @@ class UserSubscriptionService:
         return user_subscription
 
     @staticmethod
-    async def get_list(db: AsyncSession) -> dict[str, Any]:
+    async def get_list(
+        db: AsyncSession,
+        *,
+        user_keyword: str | None = None,
+        billing_cycle_start: list[date] | None = None,
+        billing_cycle_end: list[date] | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any]:
         """
         获取用户订阅列表
 
         :param db: 数据库会话
+        :param user_keyword: 用户昵称/手机号搜索关键词
+        :param billing_cycle_start: 计费周期开始时间范围
+        :param billing_cycle_end: 计费周期结束时间范围
+        :param status: 订阅状态
         :return:
         """
-        user_subscription_select = await user_subscription_dao.get_select()
-        return await paging_data(db, user_subscription_select)
+        user_subscription_select = await user_subscription_dao.get_select(
+            user_keyword=user_keyword,
+            billing_cycle_start=billing_cycle_start,
+            billing_cycle_end=billing_cycle_end,
+            status=status,
+        )
+        return await paging_data(db, user_subscription_select, unique=False)
 
     @staticmethod
     async def get_all(*, db: AsyncSession) -> Sequence[UserSubscription]:

@@ -23,11 +23,11 @@ class UsageService:
     async def get_summary(
         db: AsyncSession,
         *,
-        user_id: int,
+        user_id: int | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> UsageSummary:
-        """获取用量汇总"""
+        """获取用量汇总，user_id 为 None 时查询所有用户"""
         return await usage_log_dao.get_summary(
             db,
             user_id=user_id,
@@ -65,14 +65,20 @@ class UsageService:
     async def get_usage_logs(
         db: AsyncSession,
         *,
-        user_id: int,
+        user_id: int | None = None,
         api_key_id: int | None = None,
         model_name: str | None = None,
         status: str | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
+        user_keyword: str | None = None,
     ) -> dict[str, Any]:
-        """获取用量日志列表（分页）"""
+        """
+        获取用量日志列表（分页）
+        
+        :param user_id: 用户 ID，None 表示查询所有用户（管理员权限）
+        :param user_keyword: 用户昵称/手机号搜索关键词
+        """
         stmt = await usage_log_dao.get_list(
             user_id=user_id,
             api_key_id=api_key_id,
@@ -80,6 +86,7 @@ class UsageService:
             status=status,
             start_date=start_date,
             end_date=end_date,
+            user_keyword=user_keyword,
         )
         page_data = await paging_data(db, stmt)
         return page_data

@@ -19,6 +19,8 @@ class SubscriptionTier(Base):
     display_name: Mapped[str] = mapped_column(sa.String(64), default='', comment='显示名称')
     monthly_credits: Mapped[Decimal] = mapped_column(sa.NUMERIC(), default=None, comment='每月赠送积分')
     monthly_price: Mapped[Decimal] = mapped_column(sa.NUMERIC(), default=None, comment='月费')
+    yearly_price: Mapped[Decimal | None] = mapped_column(sa.NUMERIC(), default=None, nullable=True, comment='年费价格')
+    yearly_discount: Mapped[Decimal | None] = mapped_column(sa.NUMERIC(), default=None, nullable=True, comment='年费折扣 (如 0.8 表示8折)')
     features: Mapped[dict] = mapped_column(postgresql.JSONB(), default_factory=dict, comment='功能特性')
     enabled: Mapped[bool] = mapped_column(sa.BOOLEAN(), default=True, comment='是否启用')
     sort_order: Mapped[int] = mapped_column(sa.INTEGER(), default=0, comment='排序权重')

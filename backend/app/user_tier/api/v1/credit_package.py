@@ -71,6 +71,23 @@ async def update_credit_package(
 
 
 @router.delete(
+    '/{pk}',
+    summary='删除积分包配置',
+    dependencies=[
+        Depends(RequestPermission('credit:package:del')),
+        DependsRBAC,
+    ],
+)
+async def delete_credit_package(
+    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='积分包配置 ID')]
+) -> ResponseModel:
+    count = await credit_package_service.delete(db=db, obj=DeleteCreditPackageParam(pks=[pk]))
+    if count > 0:
+        return response_base.success()
+    return response_base.fail()
+
+
+@router.delete(
     '',
     summary='批量删除积分包配置',
     dependencies=[

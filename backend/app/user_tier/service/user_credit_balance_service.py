@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Any, Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,15 +30,37 @@ class UserCreditBalanceService:
         return user_credit_balance
 
     @staticmethod
-    async def get_list(db: AsyncSession) -> dict[str, Any]:
+    async def get_list(
+        db: AsyncSession,
+        *,
+        user_keyword: str | None = None,
+        credit_type: str | None = None,
+        expires_at: list[date] | None = None,
+        granted_at: list[date] | None = None,
+        source_type: str | None = None,
+        source_reference_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         获取用户积分余额列表
 
         :param db: 数据库会话
+        :param user_keyword: 用户昵称/手机号搜索关键词
+        :param credit_type: 积分类型
+        :param expires_at: 过期时间范围
+        :param granted_at: 发放时间范围
+        :param source_type: 来源类型
+        :param source_reference_id: 关联订单号
         :return:
         """
-        user_credit_balance_select = await user_credit_balance_dao.get_select()
-        return await paging_data(db, user_credit_balance_select)
+        user_credit_balance_select = await user_credit_balance_dao.get_select(
+            user_keyword=user_keyword,
+            credit_type=credit_type,
+            expires_at=expires_at,
+            granted_at=granted_at,
+            source_type=source_type,
+            source_reference_id=source_reference_id,
+        )
+        return await paging_data(db, user_credit_balance_select, unique=False)
 
     @staticmethod
     async def get_all(*, db: AsyncSession) -> Sequence[UserCreditBalance]:

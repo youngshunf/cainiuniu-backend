@@ -30,11 +30,16 @@ router = APIRouter()
 async def get_usage_summary(
     request: Request,
     db: CurrentSession,
+    user_id: Annotated[int | None, Query(description='用户 ID (管理员可指定)')] = None,
     start_date: Annotated[date | None, Query(description='开始日期')] = None,
     end_date: Annotated[date | None, Query(description='结束日期')] = None,
 ) -> ResponseSchemaModel[UsageSummary]:
-    user_id = request.user.id
-    data = await usage_service.get_summary(db, user_id=user_id, start_date=start_date, end_date=end_date)
+    # 超级管理员可以查看所有用户的数据，普通用户只能查看自己的
+    if request.user.is_superuser:
+        query_user_id = user_id  # None 表示查询所有
+    else:
+        query_user_id = request.user.id
+    data = await usage_service.get_summary(db, user_id=query_user_id, start_date=start_date, end_date=end_date)
     return response_base.success(data=data)
 
 
@@ -77,21 +82,31 @@ async def get_model_usage(
 async def get_usage_logs(
     request: Request,
     db: CurrentSession,
+    user_id: Annotated[int | None, Query(description='用户 ID (管理员可指定)')] = None,
     api_key_id: Annotated[int | None, Query(description='API Key ID')] = None,
     model_name: Annotated[str | None, Query(description='模型名称')] = None,
     status: Annotated[str | None, Query(description='状态')] = None,
     start_date: Annotated[date | None, Query(description='开始日期')] = None,
     end_date: Annotated[date | None, Query(description='结束日期')] = None,
+    user_keyword: Annotated[str | None, Query(description='用户昵称/手机号搜索')] = None,
 ) -> ResponseSchemaModel[PageData[GetUsageLogList]]:
-    user_id = request.user.id
+    # 超级管理员可以查看所有用户的数据，普通用户只能查看自己的
+    if request.user.is_superuser:
+        # 超管可以指定 user_id，不指定则查看所有
+        query_user_id = user_id
+    else:
+        # 普通用户只能查看自己的数据
+        query_user_id = request.user.id
+    
     page_data = await usage_service.get_usage_logs(
         db,
-        user_id=user_id,
+        user_id=query_user_id,
         api_key_id=api_key_id,
         model_name=model_name,
         status=status,
         start_date=start_date,
         end_date=end_date,
+        user_keyword=user_keyword,
     )
     return response_base.success(data=page_data)
 

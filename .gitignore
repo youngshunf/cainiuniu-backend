@@ -9,3 +9,7 @@ venv/
 .pytest_cache/
 .claude/
 .serena/
+
+# FBA CLI config (contains API keys)
+.fba.yaml
+.fba.yml

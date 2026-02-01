@@ -43,6 +43,9 @@ class GetUsageLogList(SchemaBase):
     model_config = {'from_attributes': True}
 
     id: int
+    user_id: int
+    user_nickname: str | None = None
+    user_phone: str | None = None
     model_name: str
     input_tokens: int
     output_tokens: int

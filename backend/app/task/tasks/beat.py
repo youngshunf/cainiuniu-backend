@@ -30,4 +30,8 @@ LOCAL_BEAT_SCHEDULE = {
         'task': 'daily_topic_recommendation_task',
         'schedule': TzAwareCrontab('0', '3'),
     },
+    '年度订阅积分发放': {
+        'task': 'grant_yearly_subscription_credits',
+        'schedule': TzAwareCrontab('0', '1'),  # 每天凌晨 1 点执行
+    },
 }

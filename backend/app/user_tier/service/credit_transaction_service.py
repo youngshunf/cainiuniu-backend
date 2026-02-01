@@ -25,15 +25,31 @@ class CreditTransactionService:
         return credit_transaction
 
     @staticmethod
-    async def get_list(db: AsyncSession) -> dict[str, Any]:
+    async def get_list(
+        db: AsyncSession,
+        *,
+        user_keyword: str | None = None,
+        transaction_type: str | None = None,
+        reference_id: str | None = None,
+        reference_type: str | None = None,
+    ) -> dict[str, Any]:
         """
         获取积分交易记录列表
 
         :param db: 数据库会话
+        :param user_keyword: 用户昵称/手机号搜索关键词
+        :param transaction_type: 交易类型
+        :param reference_id: 关联 ID
+        :param reference_type: 关联类型
         :return:
         """
-        credit_transaction_select = await credit_transaction_dao.get_select()
-        return await paging_data(db, credit_transaction_select)
+        credit_transaction_select = await credit_transaction_dao.get_select(
+            user_keyword=user_keyword,
+            transaction_type=transaction_type,
+            reference_id=reference_id,
+            reference_type=reference_type,
+        )
+        return await paging_data(db, credit_transaction_select, unique=False)
 
     @staticmethod
     async def get_all(*, db: AsyncSession) -> Sequence[CreditTransaction]:

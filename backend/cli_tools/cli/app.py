@@ -17,6 +17,7 @@ from backend.cli_tools.cli.common import (
     print_info,
     print_success,
 )
+from backend.cli_tools.cli.config import get_config
 from backend.cli_tools.packager.app_packager import AppPackager
 from backend.cli_tools.publisher.app_publisher import AppPublisher
 from backend.cli_tools.validator.app_validator import AppValidator
@@ -99,13 +100,13 @@ class AppPublish:
     api_url: Annotated[
         str | None,
         cappa.Arg(
-            help='API 服务器地址，如 http://localhost:8020（远程模式必需）',
+            help='API 服务器地址（可在 .fba.yaml 或 ~/.fba/config.yaml 配置）',
         ),
     ] = None
     api_key: Annotated[
         str | None,
         cappa.Arg(
-            help='发布 API Key（远程模式必需）',
+            help='发布 API Key（可在 .fba.yaml 或 ~/.fba/config.yaml 配置）',
         ),
     ] = None
     
@@ -120,11 +121,18 @@ class AppPublish:
         if self.bump and self.bump not in ('patch', 'minor', 'major'):
             raise cappa.Exit(f'无效的 --bump 类型: {self.bump}，应为 patch/minor/major', code=1)
         
+        # 远程模式：从配置文件补充参数
         if self.remote:
+            config = get_config()
             if not self.api_url:
-                raise cappa.Exit('远程模式需要指定 --api-url', code=1)
+                self.api_url = config.get_remote_url()
             if not self.api_key:
-                raise cappa.Exit('远程模式需要指定 --api-key', code=1)
+                self.api_key = config.get_remote_key()
+            
+            if not self.api_url:
+                raise cappa.Exit('远程模式需要 --api-url 或在配置文件中设置 remote.api_url', code=1)
+            if not self.api_key:
+                raise cappa.Exit('远程模式需要 --api-key 或在配置文件中设置 remote.api_key', code=1)
     
     async def __call__(self) -> None:
         print_header('应用发布')

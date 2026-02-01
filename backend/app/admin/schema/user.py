@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated, Any, Self
 
-from pydantic import ConfigDict, Field, HttpUrl, PlainSerializer, model_validator
+from pydantic import ConfigDict, Field, HttpUrl, PlainSerializer, field_validator, model_validator
 
 from backend.app.admin.schema.dept import GetDeptDetail
 from backend.app.admin.schema.role import GetRoleWithRelationDetail
@@ -69,6 +69,14 @@ class UpdateUserProfileParam(SchemaBase):
     district: str | None = Field(None, description='区')
     industry: str | None = Field(None, description='行业')
     bio: str | None = Field(None, description='个人简介')
+
+    @field_validator('avatar', mode='before')
+    @classmethod
+    def empty_string_to_none(cls, v):
+        """将空字符串转换为 None"""
+        if v == '':
+            return None
+        return v
 
 
 class UserInfoSchemaBase(SchemaBase):

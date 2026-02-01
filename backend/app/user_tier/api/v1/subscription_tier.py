@@ -71,6 +71,23 @@ async def update_subscription_tier(
 
 
 @router.delete(
+    '/{pk}',
+    summary='删除订阅等级配置',
+    dependencies=[
+        Depends(RequestPermission('subscription:tier:del')),
+        DependsRBAC,
+    ],
+)
+async def delete_subscription_tier(
+    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='订阅等级配置 ID')]
+) -> ResponseModel:
+    count = await subscription_tier_service.delete(db=db, obj=DeleteSubscriptionTierParam(pks=[pk]))
+    if count > 0:
+        return response_base.success()
+    return response_base.fail()
+
+
+@router.delete(
     '',
     summary='批量删除订阅等级配置',
     dependencies=[

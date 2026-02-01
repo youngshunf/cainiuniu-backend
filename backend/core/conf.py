@@ -237,6 +237,8 @@ class Settings(BaseSettings):
     ##################################################
     # .env LLM 加密密钥
     LLM_ENCRYPTION_KEY: str | None = None
+    # LLM API 网关 URL
+    LLM_API_BASE_URL: str | None = None
     # LiteLLM 调试模式（生产环境建议关闭）
     LITELLM_DEBUG: bool = False
 

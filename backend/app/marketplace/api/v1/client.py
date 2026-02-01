@@ -46,6 +46,12 @@ async def list_skills(
         is_official=is_official,
     )
     page_data = await paging_data(db, skill_select)
+    
+    # 填充 latest_version 字段
+    for item in page_data['items']:
+        latest = await marketplace_skill_version_dao.get_latest_by_skill(db, item['skill_id'])
+        item['latest_version'] = latest.version if latest else None
+    
     return response_base.success(data=page_data)
 
 
@@ -58,7 +64,13 @@ async def get_skill(
     skill = await marketplace_skill_dao.get_by_id(db, skill_id)
     if not skill:
         raise errors.NotFoundError(msg='技能不存在')
-    return response_base.success(data=skill)
+    
+    # 转换为 schema 并填充 latest_version 字段
+    skill_data = GetMarketplaceSkillDetail.model_validate(skill)
+    latest = await marketplace_skill_version_dao.get_latest_by_skill(db, skill_id)
+    skill_data.latest_version = latest.version if latest else None
+    
+    return response_base.success(data=skill_data)
 
 
 @router.get('/skills/{skill_id}/versions', summary='公开接口：获取技能版本列表')
@@ -87,6 +99,12 @@ async def list_apps(
         is_official=is_official,
     )
     page_data = await paging_data(db, app_select)
+    
+    # 填充 latest_version 字段
+    for item in page_data['items']:
+        latest = await marketplace_app_version_dao.get_latest_by_app(db, item['app_id'])
+        item['latest_version'] = latest.version if latest else None
+    
     return response_base.success(data=page_data)
 
 
@@ -99,7 +117,13 @@ async def get_app(
     app = await marketplace_app_dao.get_by_id(db, app_id)
     if not app:
         raise errors.NotFoundError(msg='应用不存在')
-    return response_base.success(data=app)
+    
+    # 转换为 schema 并填充 latest_version 字段
+    app_data = GetMarketplaceAppDetail.model_validate(app)
+    latest = await marketplace_app_version_dao.get_latest_by_app(db, app_id)
+    app_data.latest_version = latest.version if latest else None
+    
+    return response_base.success(data=app_data)
 
 
 @router.get('/apps/{app_id}/versions', summary='公开接口：获取应用版本列表')
@@ -110,6 +134,37 @@ async def get_app_versions(
     """公开的应用版本列表接口，无需登录"""
     versions = await marketplace_app_version_dao.get_by_app(db, app_id)
     return response_base.success(data=versions)
+
+
+@router.get('/apps/{app_id}/skills', summary='公开接口：获取应用包含的技能列表')
+async def get_app_skills(
+    db: CurrentSession,
+    app_id: Annotated[str, Path(description='应用ID')],
+) -> ResponseSchemaModel[list[GetMarketplaceSkillDetail]]:
+    """根据应用ID获取其包含的技能列表，一次性返回所有技能详情"""
+    app = await marketplace_app_dao.get_by_id(db, app_id)
+    if not app:
+        raise errors.NotFoundError(msg='应用不存在')
+    
+    # 解析技能依赖列表
+    if not app.skill_dependencies:
+        return response_base.success(data=[])
+    
+    skill_ids = [s.strip() for s in app.skill_dependencies.split(',') if s.strip()]
+    if not skill_ids:
+        return response_base.success(data=[])
+    
+    # 批量获取技能详情
+    skills = []
+    for skill_id in skill_ids:
+        skill = await marketplace_skill_dao.get_by_id(db, skill_id)
+        if skill:
+            skill_data = GetMarketplaceSkillDetail.model_validate(skill)
+            latest = await marketplace_skill_version_dao.get_latest_by_skill(db, skill_id)
+            skill_data.latest_version = latest.version if latest else None
+            skills.append(skill_data)
+    
+    return response_base.success(data=skills)
 
 
 # ============================================================
@@ -148,19 +203,31 @@ async def client_search(
     apps = []
     
     if type in ('all', 'skill'):
-        skills = await marketplace_skill_dao.search(
+        skill_results = await marketplace_skill_dao.search(
             db=db,
             keyword=q,
             category=category,
             limit=limit,
         )
+        # 转换为 schema 并填充 latest_version 字段
+        for skill in skill_results:
+            skill_data = GetMarketplaceSkillDetail.model_validate(skill)
+            latest = await marketplace_skill_version_dao.get_latest_by_skill(db, skill.skill_id)
+            skill_data.latest_version = latest.version if latest else None
+            skills.append(skill_data)
     
     if type in ('all', 'app'):
-        apps = await marketplace_app_dao.search(
+        app_results = await marketplace_app_dao.search(
             db=db,
             keyword=q,
             limit=limit,
         )
+        # 转换为 schema 并填充 latest_version 字段
+        for app in app_results:
+            app_data = GetMarketplaceAppDetail.model_validate(app)
+            latest = await marketplace_app_version_dao.get_latest_by_app(db, app.app_id)
+            app_data.latest_version = latest.version if latest else None
+            apps.append(app_data)
     
     return response_base.success(data=SearchResult(skills=skills, apps=apps))
 
@@ -174,8 +241,13 @@ class DownloadInfo(BaseModel):
     id: str
     version: str
     package_url: str
-    file_hash: str
-    file_size: int
+    file_hash: str | None
+    file_size: int | None
+
+
+class AppDownloadInfo(DownloadInfo):
+    """应用下载信息，包含技能依赖"""
+    skill_dependencies: list[dict] | None = None
 
 
 @router.get('/download/skill/{skill_id}/latest', summary='公开接口：获取技能最新版本下载信息')
@@ -229,22 +301,47 @@ async def download_skill_version(
 async def download_app_latest(
     db: CurrentSession,
     app_id: Annotated[str, Path(description='应用ID')],
-) -> ResponseSchemaModel[DownloadInfo]:
+) -> ResponseSchemaModel[AppDownloadInfo]:
     """获取应用最新版本的下载信息"""
+    # 获取应用信息（用于回退获取 skill_dependencies）
+    app = await marketplace_app_dao.get_by_id(db, app_id)
+    if not app:
+        raise errors.NotFoundError(msg='应用不存在')
+    
     version = await marketplace_app_version_dao.get_latest_by_app(db, app_id)
     if not version:
-        raise errors.NotFoundError(msg='应用或版本不存在')
+        raise errors.NotFoundError(msg='应用版本不存在')
     
     # 增加下载计数
     await marketplace_app_dao.increment_download_count(db, app_id)
     await db.commit()
     
-    return response_base.success(data=DownloadInfo(
+    # 解析技能依赖：优先使用版本级别的 skill_dependencies_versioned，回退到应用级别的 skill_dependencies
+    skill_dependencies = []
+    skill_ids = []
+    
+    if version.skill_dependencies_versioned:
+        skill_ids = list(version.skill_dependencies_versioned.keys())
+    elif app.skill_dependencies:
+        skill_ids = [s.strip() for s in app.skill_dependencies.split(',') if s.strip()]
+    
+    for skill_id in skill_ids:
+        skill_ver = await marketplace_skill_version_dao.get_latest_by_skill(db, skill_id)
+        if skill_ver and skill_ver.package_url:
+            skill_dependencies.append({
+                'id': skill_id,
+                'version': skill_ver.version,
+                'download_url': skill_ver.package_url,
+                'file_hash': skill_ver.file_hash,
+            })
+    
+    return response_base.success(data=AppDownloadInfo(
         id=app_id,
         version=version.version,
         package_url=version.package_url,
         file_hash=version.file_hash,
         file_size=version.file_size,
+        skill_dependencies=skill_dependencies if skill_dependencies else None,
     ))
 
 
@@ -253,22 +350,47 @@ async def download_app_version(
     db: CurrentSession,
     app_id: Annotated[str, Path(description='应用ID')],
     version: Annotated[str, Path(description='版本号')],
-) -> ResponseSchemaModel[DownloadInfo]:
+) -> ResponseSchemaModel[AppDownloadInfo]:
     """获取应用指定版本的下载信息"""
+    # 获取应用信息（用于回退获取 skill_dependencies）
+    app = await marketplace_app_dao.get_by_id(db, app_id)
+    if not app:
+        raise errors.NotFoundError(msg='应用不存在')
+    
     ver = await marketplace_app_version_dao.get_by_app_and_version(db, app_id, version)
     if not ver:
-        raise errors.NotFoundError(msg='应用或版本不存在')
+        raise errors.NotFoundError(msg='应用版本不存在')
     
     # 增加下载计数
     await marketplace_app_dao.increment_download_count(db, app_id)
     await db.commit()
     
-    return response_base.success(data=DownloadInfo(
+    # 解析技能依赖：优先使用版本级别的 skill_dependencies_versioned，回退到应用级别的 skill_dependencies
+    skill_dependencies = []
+    skill_ids = []
+    
+    if ver.skill_dependencies_versioned:
+        skill_ids = list(ver.skill_dependencies_versioned.keys())
+    elif app.skill_dependencies:
+        skill_ids = [s.strip() for s in app.skill_dependencies.split(',') if s.strip()]
+    
+    for skill_id in skill_ids:
+        skill_ver = await marketplace_skill_version_dao.get_latest_by_skill(db, skill_id)
+        if skill_ver and skill_ver.package_url:
+            skill_dependencies.append({
+                'id': skill_id,
+                'version': skill_ver.version,
+                'download_url': skill_ver.package_url,
+                'file_hash': skill_ver.file_hash,
+            })
+    
+    return response_base.success(data=AppDownloadInfo(
         id=app_id,
         version=ver.version,
         package_url=ver.package_url,
         file_hash=ver.file_hash,
         file_size=ver.file_size,
+        skill_dependencies=skill_dependencies if skill_dependencies else None,
     ))
 
 

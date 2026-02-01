@@ -45,5 +45,7 @@ class GetUserCreditBalanceDetail(UserCreditBalanceSchemaBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    user_nickname: str | None = Field(None, description='用户昵称')
+    user_phone: str | None = Field(None, description='用户手机号')
     created_time: datetime
     updated_time: datetime | None = None

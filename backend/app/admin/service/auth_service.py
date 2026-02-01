@@ -27,6 +27,7 @@ from backend.common.security.jwt import (
 from backend.core.conf import settings
 from backend.database.db import uuid4_str
 from backend.database.redis import redis_client
+from backend.app.llm.service.api_key_service import api_key_service
 from backend.utils.dynamic_config import load_login_config
 from backend.utils.timezone import timezone
 
@@ -37,14 +38,18 @@ class AuthService:
     @staticmethod
     async def user_verify(db: AsyncSession, username: str, password: str) -> tuple[User, int | None]:
         """
-        验证用户名和密码
+        验证用户名/手机号和密码
 
         :param db: 数据库会话
-        :param username: 用户名
+        :param username: 用户名或手机号
         :param password: 密码
         :return:
         """
+        # 先尝试通过用户名查找
         user = await user_dao.get_by_username(db, username)
+        # 如果找不到，尝试通过手机号查找
+        if not user:
+            user = await user_dao.get_by_phone(db, username)
         if not user:
             raise errors.NotFoundError(msg='用户名或密码有误')
 
@@ -165,6 +170,14 @@ class AuthService:
                 status=LoginLogStatusType.success.value,
                 msg=t('success.login.success'),
             )
+            # 获取 LLM Token
+            llm_token = None
+            try:
+                api_key = await api_key_service.get_or_create_default_key(db, user.id)
+                llm_token = api_key._decrypted_key
+            except Exception:
+                pass  # 获取失败不影响登录
+            
             data = GetLoginToken(
                 access_token=access_token_data.access_token,
                 access_token_expire_time=access_token_data.access_token_expire_time,
@@ -172,6 +185,7 @@ class AuthService:
                 refresh_token=refresh_token_data.refresh_token,
                 refresh_token_expire_time=refresh_token_data.refresh_token_expire_time,
                 password_expire_days_remaining=days_remaining,
+                llm_token=llm_token,
                 user=user,  # type: ignore
             )
             return data

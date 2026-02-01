@@ -1,0 +1,17 @@
+# FBA CLI 配置文件示例
+# 
+# 配置文件位置（按优先级）：
+#   1. 当前目录: .fba.yaml 或 .fba.yml
+#   2. 用户目录: ~/.fba/config.yaml 或 ~/.fba/config.yml
+#
+# 环境变量（优先级最高）：
+#   FBA_API_URL - 远程 API 地址
+#   FBA_API_KEY - 远程 API Key
+
+# 远程发布配置
+remote:
+  # API 服务器地址
+  api_url: http://your-server:8020
+  
+  # 发布 API Key（在服务端通过 MARKETPLACE_PUBLISH_API_KEY 环境变量配置）
+  api_key: your-api-key

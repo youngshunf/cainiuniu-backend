@@ -3,10 +3,12 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import Select, case, func, select
+from sqlalchemy import Select, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 from sqlalchemy_crud_plus import CRUDPlus
 
+from backend.app.admin.model import User
 from backend.app.llm.model.usage_log import UsageLog
 from backend.app.llm.schema.usage_log import DailyUsage, ModelUsage, UsageSummary
 
@@ -29,21 +31,50 @@ class CRUDUsageLog(CRUDPlus[UsageLog]):
         status: str | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
+        user_keyword: str | None = None,
     ) -> Select:
-        filters = {}
+        """获取用量日志列表，支持用户昵称/手机号搜索"""
+        # 使用 select 而非 ORM 方法，以便 JOIN 用户表
+        stmt = select(
+            UsageLog.id,
+            UsageLog.user_id,
+            User.nickname.label('user_nickname'),
+            User.phone.label('user_phone'),
+            UsageLog.model_name,
+            UsageLog.input_tokens,
+            UsageLog.output_tokens,
+            UsageLog.total_tokens,
+            UsageLog.total_cost,
+            UsageLog.latency_ms,
+            UsageLog.status,
+            UsageLog.is_streaming,
+            UsageLog.created_time,
+        ).outerjoin(User, UsageLog.user_id == User.id)
+        
+        # 筛选条件
         if user_id is not None:
-            filters['user_id'] = user_id
+            stmt = stmt.where(UsageLog.user_id == user_id)
         if api_key_id is not None:
-            filters['api_key_id'] = api_key_id
+            stmt = stmt.where(UsageLog.api_key_id == api_key_id)
         if model_name is not None:
-            filters['model_name__like'] = f'%{model_name}%'
+            stmt = stmt.where(UsageLog.model_name.ilike(f'%{model_name}%'))
         if status is not None:
-            filters['status'] = status
+            stmt = stmt.where(UsageLog.status == status)
         if start_date is not None:
-            filters['created_time__ge'] = datetime.combine(start_date, datetime.min.time())
+            stmt = stmt.where(UsageLog.created_time >= datetime.combine(start_date, datetime.min.time()))
         if end_date is not None:
-            filters['created_time__le'] = datetime.combine(end_date, datetime.max.time())
-        return await self.select_order('id', 'desc', **filters)
+            stmt = stmt.where(UsageLog.created_time <= datetime.combine(end_date, datetime.max.time()))
+        if user_keyword is not None:
+            # 支持按用户昵称或手机号搜索
+            stmt = stmt.where(
+                or_(
+                    User.nickname.ilike(f'%{user_keyword}%'),
+                    User.phone.ilike(f'%{user_keyword}%'),
+                )
+            )
+        
+        stmt = stmt.order_by(UsageLog.id.desc())
+        return stmt
 
     async def create(self, db: AsyncSession, obj: dict) -> UsageLog:
         new_obj = UsageLog(**obj)
@@ -56,11 +87,11 @@ class CRUDUsageLog(CRUDPlus[UsageLog]):
         self,
         db: AsyncSession,
         *,
-        user_id: int,
+        user_id: int | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> UsageSummary:
-        """获取用量汇总"""
+        """获取用量汇总，user_id 为 None 时查询所有用户"""
         stmt = select(
             func.count(UsageLog.id).label('total_requests'),
             func.sum(case((UsageLog.status == 'SUCCESS', 1), else_=0)).label('success_requests'),
@@ -70,7 +101,9 @@ class CRUDUsageLog(CRUDPlus[UsageLog]):
             func.coalesce(func.sum(UsageLog.output_tokens), 0).label('total_output_tokens'),
             func.coalesce(func.sum(UsageLog.total_cost), Decimal(0)).label('total_cost'),
             func.coalesce(func.avg(UsageLog.latency_ms), 0).label('avg_latency_ms'),
-        ).where(UsageLog.user_id == user_id)
+        )
+        if user_id is not None:
+            stmt = stmt.where(UsageLog.user_id == user_id)
 
         if start_date:
             stmt = stmt.where(UsageLog.created_time >= datetime.combine(start_date, datetime.min.time()))

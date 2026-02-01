@@ -34,6 +34,7 @@ from backend.app.llm.schema.proxy import (
 from backend.app.user_tier.service.credit_service import credit_service, InsufficientCreditsError
 from backend.common.exception.errors import HTTPError
 from backend.common.log import log
+from backend.database.db import async_db_session
 
 
 class LLMGatewayError(HTTPError):
@@ -85,12 +86,45 @@ class LLMGateway:
             litellm.set_verbose = False
             litellm.suppress_debug_info = True
             logging.getLogger('LiteLLM').setLevel(logging.WARNING)
+            logging.getLogger('LiteLLM Proxy').setLevel(logging.CRITICAL)  # 完全禁止 Proxy 日志
+            
+            # 禁用 LiteLLM 的成本计算和日志回调，我们使用自己的计费系统
+            litellm.success_callback = []
+            litellm.failure_callback = []
+            litellm._async_success_callback = []
+            litellm._async_failure_callback = []
             
             if self.debug_mode:
                 log.info('[LLM Gateway] 调试模式已开启')
             
             self._litellm = litellm
         return self._litellm
+
+    def register_model_pricing(self, model_name: str) -> None:
+        """
+        为自定义模型注册默认价格，避免 LiteLLM passthrough 日志处理器报错
+        
+        LiteLLM 的 passthrough 日志处理器会尝试计算成本，如果模型不在映射表中会报错。
+        我们使用自己的计费系统，这里只是为了避免报错，使用默认价格。
+        """
+        import litellm
+        
+        # 检查模型是否已注册
+        anthropic_model = f'anthropic/{model_name}'
+        if anthropic_model in litellm.model_cost:
+            return
+        
+        # 使用默认价格注册模型（我们不使用这个价格，只是为了避免报错）
+        default_pricing = {
+            'input_cost_per_token': 0.000003,  # $3 per 1M tokens
+            'output_cost_per_token': 0.000015,  # $15 per 1M tokens
+            'max_tokens': 8192,
+            'max_input_tokens': 200000,
+            'max_output_tokens': 8192,
+            'litellm_provider': 'anthropic',
+        }
+        litellm.model_cost[anthropic_model] = default_pricing
+        log.debug(f'[LLM Gateway] 注册自定义模型价格: {anthropic_model}')
 
     def _log_debug_request(self, params: dict[str, Any], provider_name: str, api_base: str | None) -> None:
         """调试模式下记录请求详情"""
@@ -174,7 +208,7 @@ class LLMGateway:
         if not self.debug_mode:
             return
         
-        error_msg = str(error)
+        error_msg = self._get_error_message(error)
         if len(error_msg) > 200:
             error_msg = error_msg[:200] + '...'
         
@@ -182,6 +216,55 @@ class LLMGateway:
             f'[DEBUG] LLM 错误 | 供应商: {provider_name} | 模型: {model_name} | '
             f'类型: {type(error).__name__} | {error_msg}'
         )
+
+    def _get_error_message(self, error: Exception) -> str:
+        """
+        从异常中提取有用的错误信息
+        
+        LiteLLM 的 BaseLLMException 的 str() 可能返回空字符串，
+        需要尝试从其他属性获取错误信息
+        """
+        # 尝试获取常见的错误属性
+        error_msg = str(error)
+        
+        # 如果 str(error) 为空，尝试其他属性
+        if not error_msg or error_msg.strip() == '':
+            # LiteLLM BaseLLMException 可能有 message 属性
+            if hasattr(error, 'message') and error.message:
+                error_msg = str(error.message)
+            # 某些异常有 detail 属性
+            elif hasattr(error, 'detail') and error.detail:
+                error_msg = str(error.detail)
+            # httpx 异常可能有 response 属性
+            elif hasattr(error, 'response') and error.response is not None:
+                response = error.response
+                status_code = getattr(response, 'status_code', 'N/A')
+                reason = getattr(response, 'reason_phrase', '')
+                error_msg = f'HTTP {status_code}'
+                if reason:
+                    error_msg += f' {reason}'
+                # 尝试获取响应体
+                try:
+                    if hasattr(response, 'text'):
+                        body = response.text[:200] if len(response.text) > 200 else response.text
+                        if body:
+                            error_msg += f': {body}'
+                except Exception:
+                    pass
+            # LiteLLM 异常可能有 llm_provider 和 status_code
+            elif hasattr(error, 'status_code'):
+                status_code = getattr(error, 'status_code', 'N/A')
+                llm_provider = getattr(error, 'llm_provider', 'unknown')
+                error_msg = f'Provider {llm_provider} returned HTTP {status_code}'
+            # 回退到异常类型名
+            else:
+                error_msg = f'{type(error).__name__}'
+        
+        # 如果还是空，至少返回异常类型
+        if not error_msg or error_msg.strip() == '':
+            error_msg = f'{type(error).__name__} (no message)'
+        
+        return error_msg
 
     async def _get_model_config(self, db: AsyncSession, model_name: str) -> ModelConfig:
         """获取模型配置"""
@@ -426,9 +509,10 @@ class LLMGateway:
                 # 调试日志：记录错误详情
                 self._log_debug_error(e, provider.name, model_config.model_name)
 
+                error_msg = self._get_error_message(e)
                 log.warning(
                     f'[LLM Gateway] 模型调用失败: {model_config.model_name} '
-                    f'(供应商: {provider.name}, 错误: {str(e)})，尝试下一个...'
+                    f'(供应商: {provider.name}, 错误: {error_msg})，尝试下一个...'
                 )
 
                 # 记录失败
@@ -440,7 +524,7 @@ class LLMGateway:
                     provider_id=provider.id,
                     request_id=request_id,
                     model_name=model_config.model_name,
-                    error_message=str(e),
+                    error_message=error_msg,
                     latency_ms=timer.elapsed_ms,
                     is_streaming=is_streaming,
                     ip_address=ip_address,
@@ -450,6 +534,111 @@ class LLMGateway:
 
         # 所有模型都失败了
         raise LLMGatewayError(f'All models failed. Last error: {last_error}')
+
+    async def _call_with_failover_anthropic(
+        self,
+        db: AsyncSession,
+        *,
+        models_with_providers: list[tuple[ModelConfig, ModelProvider]],
+        request: 'AnthropicMessageRequest',
+        user_id: int,
+        api_key_id: int,
+        ip_address: str | None = None,
+        original_alias: str | None = None,
+    ):
+        """
+        Anthropic 格式的故障转移调用（按优先级尝试多个模型）
+
+        Args:
+            db: 数据库会话
+            models_with_providers: 模型和供应商列表（按优先级排序）
+            request: Anthropic 请求参数
+            user_id: 用户 ID
+            api_key_id: API Key ID
+            ip_address: IP 地址
+            original_alias: 原始别名（用于日志）
+
+        Returns:
+            成功时返回 (response, model_config, provider, credit_rate, request_id, timer)
+        """
+        last_error = None
+        tried_models = []
+
+        for model_config, provider in models_with_providers:
+            breaker = self._get_circuit_breaker(provider.name)
+            tried_models.append(model_config.model_name)
+
+            # 获取积分费率
+            credit_rate = await credit_service.get_model_credit_rate(db, model_config.id)
+
+            # 构建请求参数
+            params = self._build_anthropic_params(model_config, provider, request)
+            params['stream'] = False
+            request_id = usage_tracker.generate_request_id()
+
+            log.info(
+                f'[LLM Gateway] Anthropic 故障转移尝试模型: {model_config.model_name} '
+                f'(供应商: {provider.name})'
+                + (f' [别名: {original_alias}]' if original_alias else '')
+            )
+
+            # 调试日志：记录请求详情
+            self._log_debug_request(params, provider.name, provider.api_base_url)
+
+            timer = RequestTimer().start()
+            try:
+                # 为自定义模型注册默认价格，避免 LiteLLM passthrough 日志处理器报错
+                self.register_model_pricing(model_config.model_name)
+                
+                response = await self.litellm.anthropic.messages.acreate(**params)
+                timer.stop()
+                breaker.record_success()
+
+                # 调试日志：记录响应详情
+                self._log_debug_response(response, is_streaming=False, elapsed_ms=timer.elapsed_ms)
+
+                log.info(
+                    f'[LLM Gateway] Anthropic 模型调用成功: {model_config.model_name} '
+                    f'(耗时: {timer.elapsed_ms}ms)'
+                )
+
+                return response, model_config, provider, credit_rate, request_id, timer
+
+            except Exception as e:
+                timer.stop()
+                breaker.record_failure()
+                last_error = e
+
+                # 调试日志：记录错误详情
+                self._log_debug_error(e, provider.name, model_config.model_name)
+
+                error_msg = self._get_error_message(e)
+                log.warning(
+                    f'[LLM Gateway] Anthropic 模型调用失败: {model_config.model_name} '
+                    f'(供应商: {provider.name}, 错误: {error_msg})，尝试下一个...'
+                )
+
+                # 记录失败
+                await usage_tracker.track_error(
+                    db,
+                    user_id=user_id,
+                    api_key_id=api_key_id,
+                    model_id=model_config.id,
+                    provider_id=provider.id,
+                    request_id=request_id,
+                    model_name=model_config.model_name,
+                    error_message=error_msg,
+                    latency_ms=timer.elapsed_ms,
+                    is_streaming=False,
+                    ip_address=ip_address,
+                )
+
+                continue
+
+        # 所有模型都失败了
+        raise LLMGatewayError(
+            f'All Anthropic models failed. Tried: {tried_models}. Last error: {last_error}'
+        )
 
     async def chat_completion(
         self,
@@ -531,6 +720,7 @@ class LLMGateway:
             self._log_debug_error(e, provider.name, model_config.model_name)
 
             # 记录错误
+            error_msg = self._get_error_message(e)
             await usage_tracker.track_error(
                 db,
                 user_id=user_id,
@@ -539,13 +729,13 @@ class LLMGateway:
                 provider_id=provider.id,
                 request_id=request_id,
                 model_name=model_config.model_name,
-                error_message=str(e),
+                error_message=error_msg,
                 latency_ms=timer.elapsed_ms,
                 is_streaming=False,
                 ip_address=ip_address,
             )
 
-            raise LLMGatewayError(str(e))
+            raise LLMGatewayError(error_msg)
 
         # 提取用量信息
         usage = response.get('usage', {})
@@ -803,6 +993,7 @@ class LLMGateway:
             self._log_debug_error(e, provider.name, model_config.model_name)
 
             # 记录错误
+            error_msg = self._get_error_message(e)
             await usage_tracker.track_error(
                 db,
                 user_id=user_id,
@@ -811,14 +1002,14 @@ class LLMGateway:
                 provider_id=provider.id,
                 request_id=request_id,
                 model_name=model_config.model_name,
-                error_message=str(e),
+                error_message=error_msg,
                 latency_ms=timer.elapsed_ms,
                 is_streaming=True,
                 ip_address=ip_address,
             )
 
             # 发送错误
-            error_data = {'error': {'message': str(e), 'type': 'gateway_error'}}
+            error_data = {'error': {'message': error_msg, 'type': 'gateway_error'}}
             yield f'data: {json.dumps(error_data)}\n\n'
 
 
@@ -933,10 +1124,12 @@ class LLMGateway:
         ip_address: str | None = None,
     ) -> 'AnthropicMessageResponse':
         """
-        Anthropic 格式聊天补全（非流式）
+        Anthropic 格式聊天补全（非流式）- 支持故障转移
         
-        使用 LiteLLM 的 anthropic.messages.acreate() 接口
-        LiteLLM 会自动处理格式转换，无论目标是 Anthropic 还是 OpenAI 供应商
+        故障转移策略：
+        1. 如果请求的模型是别名，依次尝试别名映射的所有模型
+        2. 如果别名映射的模型都失败了，获取同类型的 fallback 模型继续尝试
+        3. 如果不是别名，单一模型失败后也会尝试 fallback 模型
         """
         from backend.app.llm.schema.proxy import (
             AnthropicContentBlock,
@@ -955,66 +1148,70 @@ class LLMGateway:
         # 检查用户积分
         await credit_service.check_credits(db, user_id)
 
+        # 构建候选模型列表
+        models_with_providers: list[tuple[ModelConfig, ModelProvider]] = []
+        original_alias = None
+        first_model_type = None
+        first_model_id = None
+
         # 尝试解析模型别名
         alias_models, original_alias = await self._resolve_model_alias(db, request.model)
 
         if alias_models:
-            model_config, provider = alias_models[0]
+            models_with_providers = alias_models
+            first_model_type = alias_models[0][0].model_type
+            first_model_id = alias_models[0][0].id
             log.info(
-                f'[LLM Gateway] Anthropic 请求使用别名映射: {original_alias} -> {model_config.model_name} '
-                f'(供应商: {provider.name}, 类型: {provider.provider_type})'
+                f'[LLM Gateway] Anthropic 请求使用别名映射: {original_alias} -> '
+                f'{[m.model_name for m, _ in alias_models]}'
             )
         else:
+            # 不是别名，获取单一模型
             model_config = await self._get_model_config(db, request.model)
             provider = await self._get_provider(db, model_config.provider_id)
+            
+            # 检查熔断器
+            breaker = self._get_circuit_breaker(provider.name)
+            if breaker.allow_request():
+                models_with_providers.append((model_config, provider))
+            
+            first_model_type = model_config.model_type
+            first_model_id = model_config.id
 
-        # 获取模型积分费率
-        credit_rate = await credit_service.get_model_credit_rate(db, model_config.id)
+        # 如果有模型类型信息，获取同类型的 fallback 模型
+        if first_model_type:
+            fallback_models = await self._get_fallback_models(
+                db, first_model_type, first_model_id or 0
+            )
+            # 过滤掉已在候选列表中的模型
+            existing_model_ids = {m.id for m, _ in models_with_providers}
+            for model, provider in fallback_models:
+                if model.id not in existing_model_ids:
+                    models_with_providers.append((model, provider))
 
-        # 检查熔断器
-        breaker = self._get_circuit_breaker(provider.name)
-        if not breaker.allow_request():
-            raise ProviderUnavailableError(provider.name)
+        if not models_with_providers:
+            raise ProviderUnavailableError(
+                f'No available models for request: {request.model}'
+            )
 
-        # 构建参数
-        params = self._build_anthropic_params(model_config, provider, request)
-        params['stream'] = False
-        request_id = usage_tracker.generate_request_id()
-        response_model_name = original_alias or model_config.model_name
+        log.info(
+            f'[LLM Gateway] Anthropic 候选模型列表: '
+            f'{[m.model_name for m, _ in models_with_providers]}'
+        )
 
-        # 调试日志
-        self._log_debug_request(params, provider.name, provider.api_base_url)
-
-        # 调用 LiteLLM Anthropic 接口
-        timer = RequestTimer().start()
-        try:
-            response = await self.litellm.anthropic.messages.acreate(**params)
-            timer.stop()
-            breaker.record_success()
-
-            # 调试日志
-            self._log_debug_response(response, is_streaming=False, elapsed_ms=timer.elapsed_ms)
-
-        except Exception as e:
-            timer.stop()
-            breaker.record_failure()
-            self._log_debug_error(e, provider.name, model_config.model_name)
-
-            # 记录错误
-            await usage_tracker.track_error(
+        # 使用故障转移调用
+        response, model_config, provider, credit_rate, request_id, timer = \
+            await self._call_with_failover_anthropic(
                 db,
+                models_with_providers=models_with_providers,
+                request=request,
                 user_id=user_id,
                 api_key_id=api_key_id,
-                model_id=model_config.id,
-                provider_id=provider.id,
-                request_id=request_id,
-                model_name=model_config.model_name,
-                error_message=str(e),
-                latency_ms=timer.elapsed_ms,
-                is_streaming=False,
                 ip_address=ip_address,
+                original_alias=original_alias,
             )
-            raise LLMGatewayError(str(e))
+
+        response_model_name = original_alias or model_config.model_name
 
         # 提取用量信息 - LiteLLM 返回的是 Anthropic 格式
         usage = getattr(response, 'usage', None)
@@ -1112,9 +1309,9 @@ class LLMGateway:
         ip_address: str | None = None,
     ) -> dict[str, Any]:
         """
-        准备 Anthropic 流式响应所需的所有信息（在数据库会话内完成）
+        准备 Anthropic 流式响应所需的所有信息（在数据库会话内完成）- 支持故障转移
         
-        返回一个上下文 dict，包含执行流式响应所需的所有信息
+        返回一个上下文 dict，包含所有候选模型的信息，用于 execute 阶段的故障转移
         """
         # 检查速率限制
         await rate_limiter.check_all(
@@ -1127,43 +1324,90 @@ class LLMGateway:
         # 检查用户积分
         await credit_service.check_credits(db, user_id)
         
+        # 构建候选模型列表
+        models_with_providers: list[tuple[ModelConfig, ModelProvider]] = []
+        original_alias = None
+        first_model_type = None
+        first_model_id = None
+
         # 尝试解析模型别名
         alias_models, original_alias = await self._resolve_model_alias(db, request.model)
 
         if alias_models:
-            model_config, provider = alias_models[0]
+            models_with_providers = alias_models
+            first_model_type = alias_models[0][0].model_type
+            first_model_id = alias_models[0][0].id
             log.info(
-                f'[LLM Gateway] Anthropic 流式请求使用别名映射: {original_alias} -> {model_config.model_name}'
+                f'[LLM Gateway] Anthropic 流式请求使用别名映射: {original_alias} -> '
+                f'{[m.model_name for m, _ in alias_models]}'
             )
         else:
+            # 不是别名，获取单一模型
             model_config = await self._get_model_config(db, request.model)
             provider = await self._get_provider(db, model_config.provider_id)
+            
+            # 检查熔断器
+            breaker = self._get_circuit_breaker(provider.name)
+            if breaker.allow_request():
+                models_with_providers.append((model_config, provider))
+            
+            first_model_type = model_config.model_type
+            first_model_id = model_config.id
 
-        # 获取积分费率
-        credit_rate = await credit_service.get_model_credit_rate(db, model_config.id)
-        response_model_name = original_alias or model_config.model_name
+        # 如果有模型类型信息，获取同类型的 fallback 模型
+        if first_model_type:
+            fallback_models = await self._get_fallback_models(
+                db, first_model_type, first_model_id or 0
+            )
+            # 过滤掉已在候选列表中的模型
+            existing_model_ids = {m.id for m, _ in models_with_providers}
+            for model, provider in fallback_models:
+                if model.id not in existing_model_ids:
+                    models_with_providers.append((model, provider))
 
-        log.info(f'[LLM Gateway] Anthropic 流式请求: {model_config.model_name}')
-        
-        # 构建 LiteLLM Anthropic 参数
-        params = self._build_anthropic_params(model_config, provider, request)
-        params['stream'] = True
+        if not models_with_providers:
+            raise ProviderUnavailableError(
+                f'No available models for request: {request.model}'
+            )
+
+        log.info(
+            f'[LLM Gateway] Anthropic 流式候选模型列表: '
+            f'{[m.model_name for m, _ in models_with_providers]}'
+        )
+
+        # 为每个候选模型预先构建参数
+        candidates = []
+        for model_config, provider in models_with_providers:
+            credit_rate = await credit_service.get_model_credit_rate(db, model_config.id)
+            params = self._build_anthropic_params(model_config, provider, request)
+            params['stream'] = True
+            
+            candidates.append({
+                'params': params,
+                'model_config': {
+                    'id': model_config.id,
+                    'model_name': model_config.model_name,
+                    'model_type': model_config.model_type,
+                    # 保存为字符串以保持精度，在 execute 中转换为 Decimal
+                    'input_cost_per_1k': str(model_config.input_cost_per_1k) if model_config.input_cost_per_1k else '0',
+                    'output_cost_per_1k': str(model_config.output_cost_per_1k) if model_config.output_cost_per_1k else '0',
+                },
+                'provider': {
+                    'id': provider.id,
+                    'name': provider.name,
+                    'api_base_url': provider.api_base_url,
+                },
+                'credit_rate': credit_rate,
+            })
+
+        response_model_name = original_alias or models_with_providers[0][0].model_name
         
         return {
-            'params': params,
+            'candidates': candidates,
             'response_model_name': response_model_name,
-            'model_config': {
-                'id': model_config.id,
-                'model_name': model_config.model_name,
-            },
-            'provider': {
-                'id': provider.id,
-                'name': provider.name,
-                'api_base_url': provider.api_base_url,
-            },
+            'original_alias': original_alias,
             'user_id': user_id,
             'api_key_id': api_key_id,
-'credit_rate': credit_rate,
             'ip_address': ip_address,
         }
 
@@ -1172,98 +1416,321 @@ class LLMGateway:
         context: dict[str, Any],
     ) -> AsyncIterator[str]:
         """
-        执行 Anthropic 流式响应（不需要数据库）
+        执行 Anthropic 流式响应 - 支持故障转移 + 使用量统计
         
+        依次尝试 candidates 中的模型，直到成功为止
         使用 LiteLLM 的 anthropic.messages.acreate(stream=True) 接口
-        LiteLLM 返回的流式事件已经是 Anthropic SSE 格式
+        流式结束后记录使用量并扣除积分
         """
         import codecs
         import traceback
         
-        params = context['params']
+        candidates = context.get('candidates', [])
         response_model_name = context['response_model_name']
-        provider_name = context['provider']['name']
-        api_base_url = context['provider']['api_base_url']
+        original_alias = context.get('original_alias')
+        user_id = context.get('user_id')
+        api_key_id = context.get('api_key_id')
+        ip_address = context.get('ip_address')
         
-        if self.debug_mode:
-            log.info(f'[DEBUG] Anthropic 流式响应开始 | model: {response_model_name}')
-            self._log_debug_request(params, provider_name, api_base_url)
+        # 向后兼容：如果没有 candidates，使用旧格式
+        if not candidates and 'params' in context:
+            candidates = [{
+                'params': context['params'],
+                'model_config': context['model_config'],
+                'provider': context['provider'],
+                'credit_rate': context.get('credit_rate'),
+            }]
         
-        timer = RequestTimer().start()
-        
-        # 创建增量 UTF-8 解码器，处理多字节字符被分割的情况
-        decoder = codecs.getincrementaldecoder('utf-8')('replace')
-        
-        try:
-            if self.debug_mode:
-                log.info(f'[DEBUG] 开始调用 LiteLLM anthropic.messages.acreate(stream=True)...')
-            
-            # 使用 LiteLLM Anthropic 流式接口
-            response = await self.litellm.anthropic.messages.acreate(**params)
-            
-            if self.debug_mode:
-                log.info(f'[DEBUG] LiteLLM 返回: {type(response)}')
-            
-            # LiteLLM 返回的已经是 Anthropic SSE 格式的流
-            # 返回格式是 bytes，已经包含正确的 SSE 格式 (event: xxx\ndata: {...}\n\n)
-            chunk_count = 0
-            async for chunk in response:
-                if self.debug_mode and chunk_count == 0:
-                    chunk_repr = str(chunk)[:300] if chunk else 'None'
-                    log.info(f'[DEBUG] 第一个 chunk: {chunk_repr}')
-                
-                chunk_count += 1
-                
-                # LiteLLM 返回的是原始 SSE bytes，使用增量解码器透传
-                if isinstance(chunk, bytes):
-                    decoded = decoder.decode(chunk, final=False)
-                    if decoded:
-                        yield decoded
-                elif isinstance(chunk, str):
-                    yield chunk
-                else:
-                    # 如果是对象格式（某些版本可能返回解析后的对象）
-                    if isinstance(chunk, dict):
-                        chunk_type = chunk.get('type', '')
-                        yield f'event: {chunk_type}\ndata: {json.dumps(chunk)}\n\n'
-                    elif hasattr(chunk, 'type'):
-                        chunk_type = getattr(chunk, 'type', 'unknown')
-                        if hasattr(chunk, 'model_dump'):
-                            chunk_dict = chunk.model_dump()
-                        elif hasattr(chunk, 'dict'):
-                            chunk_dict = chunk.dict()
-                        else:
-                            chunk_dict = {'type': chunk_type, 'data': str(chunk)}
-                        yield f'event: {chunk_type}\ndata: {json.dumps(chunk_dict)}\n\n'
-                    else:
-                        # 未知格式，尝试直接输出
-                        yield f'data: {json.dumps({"type": "unknown", "content": str(chunk)})}\n\n'
-            
-            # 刷新解码器中剩余的字节
-            final_decoded = decoder.decode(b'', final=True)
-            if final_decoded:
-                yield final_decoded
-            
-            timer.stop()
-            
-            if self.debug_mode:
-                log.info(f'[DEBUG] Anthropic 流式响应结束 | 共 {chunk_count} 个 chunk | 耗时: {timer.elapsed_ms}ms')
-            
-        except Exception as e:
-            timer.stop()
-            log.error(f'[DEBUG] Anthropic 流式响应异常: {e}\n{traceback.format_exc()}')
-            if self.debug_mode:
-                self._log_debug_error(e, provider_name, context['model_config']['model_name'])
-            
-            # 发送错误事件
+        if not candidates:
             error_event = {
                 'type': 'error',
                 'error': {
                     'type': 'api_error',
-                    'message': str(e),
+                    'message': 'No available models for streaming',
                 }
             }
             yield f'event: error\ndata: {json.dumps(error_event)}\n\n'
+            return
+        
+        last_error = None
+        tried_models = []
+        
+        for candidate in candidates:
+            params = candidate['params']
+            model_config = candidate['model_config']
+            provider_info = candidate['provider']
+            credit_rate = candidate.get('credit_rate')
+            
+            model_name = model_config['model_name']
+            model_id = model_config['id']
+            provider_name = provider_info['name']
+            provider_id = provider_info['id']
+            api_base_url = provider_info.get('api_base_url')
+            
+            tried_models.append(model_name)
+            
+            # 检查熔断器
+            breaker = self._get_circuit_breaker(provider_name)
+            if not breaker.allow_request():
+                log.warning(
+                    f'[LLM Gateway] Anthropic 流式跳过熔断模型: {model_name} '
+                    f'(供应商: {provider_name})'
+                )
+                continue
+            
+            log.info(
+                f'[LLM Gateway] Anthropic 流式故障转移尝试模型: {model_name} '
+                f'(供应商: {provider_name})'
+                + (f' [别名: {original_alias}]' if original_alias else '')
+            )
+            
+            if self.debug_mode:
+                log.info(f'[DEBUG] Anthropic 流式响应开始 | model: {model_name}')
+                self._log_debug_request(params, provider_name, api_base_url)
+            
+            timer = RequestTimer().start()
+            decoder = codecs.getincrementaldecoder('utf-8')('replace')
+            request_id = usage_tracker.generate_request_id()
+            
+            # 用于收集使用量信息
+            input_tokens = 0
+            output_tokens = 0
+            stream_success = False
+            
+            try:
+                # 为自定义模型注册默认价格，避免 LiteLLM passthrough 日志处理器报错
+                self.register_model_pricing(model_name)
+                
+                if self.debug_mode:
+                    log.info(f'[DEBUG] 开始调用 LiteLLM anthropic.messages.acreate(stream=True)...')
+                
+                response = await self.litellm.anthropic.messages.acreate(**params)
+                
+                if self.debug_mode:
+                    log.info(f'[DEBUG] LiteLLM 返回: {type(response)}')
+                
+                chunk_count = 0
+                async for chunk in response:
+                    if self.debug_mode and chunk_count == 0:
+                        chunk_repr = str(chunk)[:300] if chunk else 'None'
+                        log.info(f'[DEBUG] 第一个 chunk: {chunk_repr}')
+                    
+                    chunk_count += 1
+                    
+                    # 解析使用量信息（从 message_start 和 message_delta 事件）
+                    if isinstance(chunk, bytes):
+                        decoded = decoder.decode(chunk, final=False)
+                        if decoded:
+                            # 尝试从 SSE 数据中提取使用量
+                            input_tokens, output_tokens = self._extract_usage_from_sse(
+                                decoded, input_tokens, output_tokens
+                            )
+                            yield decoded
+                    elif isinstance(chunk, str):
+                        input_tokens, output_tokens = self._extract_usage_from_sse(
+                            chunk, input_tokens, output_tokens
+                        )
+                        yield chunk
+                    else:
+                        # 对象格式，直接提取使用量
+                        if isinstance(chunk, dict):
+                            chunk_type = chunk.get('type', '')
+                            # 从 message_start 获取 input_tokens
+                            if chunk_type == 'message_start':
+                                message = chunk.get('message', {})
+                                usage = message.get('usage', {})
+                                input_tokens = usage.get('input_tokens', input_tokens)
+                            # 从 message_delta 获取 output_tokens
+                            elif chunk_type == 'message_delta':
+                                usage = chunk.get('usage', {})
+                                output_tokens = usage.get('output_tokens', output_tokens)
+                            yield f'event: {chunk_type}\ndata: {json.dumps(chunk)}\n\n'
+                        elif hasattr(chunk, 'type'):
+                            chunk_type = getattr(chunk, 'type', 'unknown')
+                            # 从对象格式提取使用量
+                            if chunk_type == 'message_start' and hasattr(chunk, 'message'):
+                                message = chunk.message
+                                if hasattr(message, 'usage'):
+                                    input_tokens = getattr(message.usage, 'input_tokens', input_tokens)
+                            elif chunk_type == 'message_delta' and hasattr(chunk, 'usage'):
+                                output_tokens = getattr(chunk.usage, 'output_tokens', output_tokens)
+                            
+                            if hasattr(chunk, 'model_dump'):
+                                chunk_dict = chunk.model_dump()
+                            elif hasattr(chunk, 'dict'):
+                                chunk_dict = chunk.dict()
+                            else:
+                                chunk_dict = {'type': chunk_type, 'data': str(chunk)}
+                            yield f'event: {chunk_type}\ndata: {json.dumps(chunk_dict)}\n\n'
+                        else:
+                            yield f'data: {json.dumps({"type": "unknown", "content": str(chunk)})}\n\n'
+                
+                # 刷新解码器
+                final_decoded = decoder.decode(b'', final=True)
+                if final_decoded:
+                    yield final_decoded
+                
+                timer.stop()
+                breaker.record_success()
+                stream_success = True
+                
+                if self.debug_mode:
+                    log.info(
+                        f'[DEBUG] Anthropic 流式响应结束 | 模型: {model_name} | '
+                        f'共 {chunk_count} 个 chunk | 耗时: {timer.elapsed_ms}ms | '
+                        f'tokens: in={input_tokens} out={output_tokens}'
+                    )
+                
+                log.info(
+                    f'[LLM Gateway] Anthropic 流式模型调用成功: {model_name} '
+                    f'(耗时: {timer.elapsed_ms}ms, tokens: in={input_tokens} out={output_tokens})'
+                )
+                
+                # 流式成功后，记录使用量和扣除积分
+                log.info(
+                    f'[LLM Gateway] 准备记录流式使用量: user_id={user_id}, api_key_id={api_key_id}, '
+                    f'model_id={model_id}, provider_id={provider_id}'
+                )
+                if user_id and api_key_id:
+                    try:
+                        async with async_db_session() as db:
+                            # 计算并扣除积分
+                            credits_used = credit_service.calculate_credits(
+                                input_tokens, output_tokens, credit_rate, model_name=model_name
+                            )
+                            if credits_used > 0:
+                                await credit_service.deduct_credits(
+                                    db,
+                                    user_id=user_id,
+                                    credits=credits_used,
+                                    reference_id=request_id,
+                                    reference_type='llm_usage',
+                                    description=f'模型调用(流式): {model_name}',
+                                    extra_data={
+                                        'model_name': model_name,
+                                        'input_tokens': input_tokens,
+                                        'output_tokens': output_tokens,
+                                        'streaming': True,
+                                    },
+                                )
+                            
+                            # 记录使用量
+                            await usage_tracker.track_success(
+                                db,
+                                user_id=user_id,
+                                api_key_id=api_key_id,
+                                model_id=model_id,
+                                provider_id=provider_id,
+                                request_id=request_id,
+                                model_name=model_name,
+                                input_tokens=input_tokens,
+                                output_tokens=output_tokens,
+                                input_cost_per_1k=Decimal(model_config.get('input_cost_per_1k', '0')),
+                                output_cost_per_1k=Decimal(model_config.get('output_cost_per_1k', '0')),
+                                latency_ms=timer.elapsed_ms,
+                                is_streaming=True,
+                                ip_address=ip_address,
+                            )
+                            
+                            # 消费 tokens (速率限制)
+                            await rate_limiter.consume_tokens(api_key_id, input_tokens + output_tokens)
+                            
+                            log.info(
+                                f'[LLM Gateway] 流式使用量已记录: {model_name} | '
+                                f'tokens: {input_tokens + output_tokens} | credits: {credits_used}'
+                            )
+                    except Exception as track_error:
+                        import traceback as tb
+                        log.error(
+                            f'[LLM Gateway] 流式使用量记录失败: {track_error}\n'
+                            f'{tb.format_exc()}'
+                        )
+                else:
+                    log.warning(
+                        f'[LLM Gateway] 无法记录流式使用量: user_id={user_id}, api_key_id={api_key_id}')
+                
+                # 成功，直接返回
+                return
+                
+            except Exception as e:
+                timer.stop()
+                breaker.record_failure()
+                last_error = e
+                
+                error_msg = self._get_error_message(e)
+                log.warning(
+                    f'[LLM Gateway] Anthropic 流式模型调用失败: {model_name} '
+                    f'(供应商: {provider_name}, 错误: {error_msg})，尝试下一个...'
+                )
+                
+                if self.debug_mode:
+                    log.error(f'[DEBUG] Anthropic 流式响应异常: {e}\n{traceback.format_exc()}')
+                    self._log_debug_error(e, provider_name, model_name)
+                
+                # 记录失败
+                if user_id and api_key_id:
+                    try:
+                        async with async_db_session() as db:
+                            await usage_tracker.track_error(
+                                db,
+                                user_id=user_id,
+                                api_key_id=api_key_id,
+                                model_id=model_id,
+                                provider_id=provider_id,
+                                request_id=request_id,
+                                model_name=model_name,
+                                error_message=error_msg,
+                                latency_ms=timer.elapsed_ms,
+                                is_streaming=True,
+                                ip_address=ip_address,
+                            )
+                    except Exception as track_error:
+                        log.error(f'[LLM Gateway] 流式错误记录失败: {track_error}')
+                
+                continue
+        
+        # 所有模型都失败了
+        error_msg = f'All streaming models failed. Tried: {tried_models}. Last error: {last_error}'
+        log.error(f'[LLM Gateway] {error_msg}')
+        
+        error_event = {
+            'type': 'error',
+            'error': {
+                'type': 'api_error',
+                'message': error_msg,
+            }
+        }
+        yield f'event: error\ndata: {json.dumps(error_event)}\n\n'
+
+    def _extract_usage_from_sse(self, data: str, current_input: int, current_output: int) -> tuple[int, int]:
+        """
+        从 SSE 数据中提取使用量信息
+        
+        Anthropic SSE 格式:
+        - message_start 事件包含 input_tokens
+        - message_delta 事件包含 output_tokens
+        """
+        import re
+        
+        input_tokens = current_input
+        output_tokens = current_output
+        
+        try:
+            # 查找 message_start 事件中的 input_tokens
+            if 'message_start' in data and 'input_tokens' in data:
+                match = re.search(r'"input_tokens"\s*:\s*(\d+)', data)
+                if match:
+                    input_tokens = int(match.group(1))
+            
+            # 查找 message_delta 事件中的 output_tokens
+            if 'message_delta' in data and 'output_tokens' in data:
+                match = re.search(r'"output_tokens"\s*:\s*(\d+)', data)
+                if match:
+                    output_tokens = int(match.group(1))
+        except Exception:
+            pass
+        
+        return input_tokens, output_tokens
 
     async def chat_completion_anthropic_stream(
         self,

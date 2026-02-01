@@ -123,8 +123,8 @@ class CreditService:
     # 标准比例: 1M tokens = 输入 5 积分 / 输出 15 积分
     # 即 1K tokens = 输入 0.005 积分 / 输出 0.015 积分
     DEFAULT_BASE_CREDIT_PER_1K = Decimal('1.0')
-    DEFAULT_INPUT_MULTIPLIER = Decimal('5')
-    DEFAULT_OUTPUT_MULTIPLIER = Decimal('15')
+    DEFAULT_INPUT_MULTIPLIER = Decimal('0.5')
+    DEFAULT_OUTPUT_MULTIPLIER = Decimal('1.5')
 
     async def get_or_create_subscription(
         self,
@@ -165,12 +165,16 @@ class CreditService:
         subscription = UserSubscription(
             user_id=user_id,
             tier='free',
+            subscription_type='monthly',
             monthly_credits=monthly_credits,
             current_credits=monthly_credits,
             used_credits=Decimal('0'),
             purchased_credits=Decimal('0'),
             billing_cycle_start=now,
             billing_cycle_end=cycle_end,
+            subscription_start_date=now,
+            subscription_end_date=None,  # 免费版无订阅结束时间
+            next_grant_date=None,
             status='active',
             auto_renew=True,
         )
@@ -492,6 +496,18 @@ class CreditService:
         :param subscription: 用户订阅
         :return: 更新后的订阅
         """
+        # 年度订阅用户由定时任务处理，不自动刷新
+        subscription_type = getattr(subscription, 'subscription_type', 'monthly') or 'monthly'
+        if subscription_type == 'yearly':
+            # 检查年度订阅是否已过期
+            subscription_end = getattr(subscription, 'subscription_end_date', None)
+            now = timezone.now()
+            if subscription_end and now > subscription_end:
+                subscription.status = 'expired'
+                log.info(f'[Credit] Yearly subscription expired for user {subscription.user_id}')
+            return subscription
+
+        # 以下是月度订阅的刷新逻辑
         # 获取等级配置
         tier = await subscription_tier_dao.select_model_by_column(db, tier_name=subscription.tier)
         monthly_credits = tier.monthly_credits if tier else Decimal('500')  # 默认 500 积分
@@ -588,25 +604,24 @@ class CreditService:
         # 获取等级配置
         tier = await subscription_tier_dao.select_model_by_column(db, tier_name=subscription.tier)
 
-        # 从 balance 表获取详细积分信息
-        balances = await self.get_user_active_balances(db, user_id)
+        # 从 balance 表获取详细积分信息（有效期内的所有记录，不管是否用完）
+        balances = await self.get_user_valid_balances(db, user_id)
+        # 获取有剩余的记录用于计算可用积分
+        active_balances = await self.get_user_active_balances(db, user_id)
         
-        # 老用户迁移：如果没有 balance 记录但 subscription 有积分，自动创建
-        if not balances and subscription.current_credits > 0:
-            balances = await self._migrate_legacy_credits(db, subscription)
-        
-        total_credits = sum(b.remaining_amount for b in balances)
+        total_credits = sum(b.remaining_amount for b in active_balances)
         total_used = sum(b.used_amount for b in balances)
 
-        # 分类统计
-        monthly_remaining = sum(b.remaining_amount for b in balances if b.credit_type == 'monthly')
-        purchased_remaining = sum(b.remaining_amount for b in balances if b.credit_type == 'purchased')
-        bonus_remaining = sum(b.remaining_amount for b in balances if b.credit_type == 'bonus')
+        # 分类统计（基于有剩余的记录）
+        monthly_remaining = sum(b.remaining_amount for b in active_balances if b.credit_type == 'monthly')
+        purchased_remaining = sum(b.remaining_amount for b in active_balances if b.credit_type == 'purchased')
+        bonus_remaining = sum(b.remaining_amount for b in active_balances if b.credit_type == 'bonus')
 
         return {
             'user_id': user_id,
             'tier': subscription.tier,
             'tier_display_name': tier.display_name if tier else subscription.tier,
+            'subscription_type': getattr(subscription, 'subscription_type', 'monthly') or 'monthly',
             'current_credits': float(total_credits),
             'monthly_credits': float(subscription.monthly_credits),
             'used_credits': float(total_used),
@@ -615,6 +630,9 @@ class CreditService:
             'bonus_remaining': float(bonus_remaining),
             'billing_cycle_start': subscription.billing_cycle_start.isoformat(),
             'billing_cycle_end': subscription.billing_cycle_end.isoformat(),
+            'subscription_start_date': subscription.subscription_start_date.isoformat() if getattr(subscription, 'subscription_start_date', None) else None,
+            'subscription_end_date': subscription.subscription_end_date.isoformat() if getattr(subscription, 'subscription_end_date', None) else None,
+            'next_grant_date': subscription.next_grant_date.isoformat() if getattr(subscription, 'next_grant_date', None) else None,
             'status': subscription.status,
             'balances': [
                 {
@@ -631,52 +649,6 @@ class CreditService:
                 for b in balances
             ],
         }
-
-    async def _migrate_legacy_credits(
-        self,
-        db: AsyncSession,
-        subscription: UserSubscription,
-    ) -> Sequence[UserCreditBalance]:
-        """
-        迁移老用户积分到 balance 表
-
-        :param db: 数据库会话
-        :param subscription: 用户订阅
-        :return: 创建的 balance 记录列表
-        """
-        log.info(f'[Credit] Migrating legacy credits for user {subscription.user_id}')
-        balances = []
-        now = timezone.now()
-        
-        # 迁移月度积分（有过期时间）
-        monthly_remaining = subscription.current_credits - subscription.purchased_credits
-        if monthly_remaining > 0:
-            balance = await self._create_balance_record(
-                db,
-                user_id=subscription.user_id,
-                credit_type='monthly',
-                amount=monthly_remaining,
-                expires_at=subscription.billing_cycle_end,
-                source_type='subscription_grant',
-                description=f'{subscription.tier}版月度积分（迁移）',
-            )
-            balances.append(balance)
-        
-        # 迁移购买积分（永不过期）
-        if subscription.purchased_credits > 0:
-            balance = await self._create_balance_record(
-                db,
-                user_id=subscription.user_id,
-                credit_type='purchased',
-                amount=subscription.purchased_credits,
-                expires_at=None,  # 永不过期
-                source_type='purchase',
-                description='购买积分（迁移）',
-            )
-            balances.append(balance)
-        
-        await db.flush()
-        return balances
 
     async def _create_balance_record(
         self,
@@ -762,6 +734,62 @@ class CreditService:
             )
             # 按过期时间升序，NULL（永不过期）放最后
             .order_by(UserCreditBalance.expires_at.asc().nulls_last())
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    async def get_user_valid_balances(
+        self,
+        db: AsyncSession,
+        user_id: int,
+    ) -> Sequence[UserCreditBalance]:
+        """
+        获取用户有效期内的所有积分余额记录（不管是否用完）
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return: 积分余额记录列表
+        """
+        now = timezone.now()
+        stmt = (
+            select(UserCreditBalance)
+            .where(
+                and_(
+                    UserCreditBalance.user_id == user_id,
+                    or_(
+                        UserCreditBalance.expires_at.is_(None),
+                        UserCreditBalance.expires_at > now,
+                    ),
+                )
+            )
+            .order_by(UserCreditBalance.granted_at.desc())
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    async def get_user_expired_balances(
+        self,
+        db: AsyncSession,
+        user_id: int,
+    ) -> Sequence[UserCreditBalance]:
+        """
+        获取用户已过期的积分余额记录（历史记录）
+
+        :param db: 数据库会话
+        :param user_id: 用户 ID
+        :return: 积分余额记录列表
+        """
+        now = timezone.now()
+        stmt = (
+            select(UserCreditBalance)
+            .where(
+                and_(
+                    UserCreditBalance.user_id == user_id,
+                    UserCreditBalance.expires_at.isnot(None),
+                    UserCreditBalance.expires_at <= now,
+                )
+            )
+            .order_by(UserCreditBalance.expires_at.desc())
         )
         result = await db.execute(stmt)
         return result.scalars().all()

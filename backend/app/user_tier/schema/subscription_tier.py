@@ -12,6 +12,8 @@ class SubscriptionTierSchemaBase(SchemaBase):
     display_name: str = Field(description='显示名称')
     monthly_credits: Decimal = Field(description='每月赠送积分')
     monthly_price: Decimal = Field(description='月费')
+    yearly_price: Decimal | None = Field(default=None, description='年费')
+    yearly_discount: Decimal | None = Field(default=None, description='年费折扣 (如 0.8 表示8折)')
     features: dict = Field(description='功能特性')
     enabled: bool = Field(description='是否启用')
     sort_order: int = Field(description='排序权重')

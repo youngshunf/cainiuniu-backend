@@ -71,6 +71,23 @@ async def update_marketplace_category(
 
 
 @router.delete(
+    '/{pk}',
+    summary='删除技能市场分类',
+    dependencies=[
+        Depends(RequestPermission('marketplace:category:del')),
+        DependsRBAC,
+    ],
+)
+async def delete_marketplace_category(
+    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='技能市场分类 ID')]
+) -> ResponseModel:
+    count = await marketplace_category_service.delete(db=db, obj=DeleteMarketplaceCategoryParam(pks=[pk]))
+    if count > 0:
+        return response_base.success()
+    return response_base.fail()
+
+
+@router.delete(
     '',
     summary='批量删除技能市场分类',
     dependencies=[

@@ -87,12 +87,16 @@ class AppPublisher:
                 error=f'版本 {final_version} 已存在，请使用其他版本号'
             )
         
-        # 4. 打包
+        # 4. 打包前更新 manifest.json 版本号（确保包内版本与数据库一致）
+        if manifest.version != final_version:
+            self._update_manifest_version(final_version)
+        
+        # 5. 打包
         print_info(f'打包应用 (v{final_version})...')
         package_result = self.packager.package()
         print_success(f'打包完成: {package_result.file_count} 个文件, {format_size(package_result.file_size)}')
         
-        # 5. 上传到 S3
+        # 6. 上传到 S3
         print_info('上传到存储...')
         try:
             package_url, file_hash, file_size = await marketplace_storage_service.upload_app_package(
@@ -105,26 +109,30 @@ class AppPublisher:
         except Exception as e:
             return PublishResult(success=False, error=f'上传失败: {e}')
         
-        # 6. 上传图标
-        icon_path = self.app_path / 'assets' / 'icon.svg'
-        if icon_path.exists():
-            print_info('上传图标...')
-            try:
-                icon_content = icon_path.read_bytes()
-                icon_url = await marketplace_storage_service.upload_icon(
-                    db=db,
-                    item_type='app',
-                    item_id=app_id,
-                    content=icon_content,
-                )
-                print_success('图标上传完成')
-            except Exception as e:
-                print_error(f'图标上传失败: {e}')
-                icon_url = None
-        else:
-            icon_url = None
+        # 7. 上传图标（带版本后缀避免 CDN 缓存）
+        icon_url = None
+        icon_paths = [
+            self.app_path / 'icon.svg',
+            self.app_path / 'assets' / 'icon.svg',
+        ]
+        for icon_path in icon_paths:
+            if icon_path.exists():
+                print_info('上传图标...')
+                try:
+                    icon_content = icon_path.read_bytes()
+                    icon_url = await marketplace_storage_service.upload_icon(
+                        db=db,
+                        item_type='app',
+                        item_id=app_id,
+                        content=icon_content,
+                        version=final_version,
+                    )
+                    print_success('图标上传完成')
+                except Exception as e:
+                    print_error(f'图标上传失败: {e}')
+                break
         
-        # 7. 创建/更新数据库记录
+        # 8. 创建/更新数据库记录
         print_info('更新数据库...')
         try:
             existing_app = await self._get_app(db, app_id)
@@ -194,6 +202,26 @@ class AppPublisher:
                 return manifest_version
         
         return manifest_version
+    
+    def _update_manifest_version(self, version: str) -> None:
+        """更新 manifest.json 中的版本号"""
+        import json
+        manifest_path = self.app_path / 'manifest.json'
+        if not manifest_path.exists():
+            return
+        
+        try:
+            with open(manifest_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            data['version'] = version
+            
+            with open(manifest_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            
+            print_info(f'已更新 manifest.json 版本号为 {version}')
+        except Exception as e:
+            print_error(f'更新 manifest.json 版本号失败: {e}')
     
     async def _get_app(self, db: AsyncSession, app_id: str) -> MarketplaceApp | None:
         """获取应用"""

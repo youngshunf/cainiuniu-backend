@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query
@@ -35,8 +36,20 @@ async def get_user_subscription(
         DependsPagination,
     ],
 )
-async def get_user_subscriptions_paginated(db: CurrentSession) -> ResponseSchemaModel[PageData[GetUserSubscriptionDetail]]:
-    page_data = await user_subscription_service.get_list(db=db)
+async def get_user_subscriptions_paginated(
+    db: CurrentSession,
+    user_keyword: Annotated[str | None, Query(description='用户昵称/手机号搜索')] = None,
+    billing_cycle_start: Annotated[list[date] | None, Query(description='计费周期开始时间范围')] = None,
+    billing_cycle_end: Annotated[list[date] | None, Query(description='计费周期结束时间范围')] = None,
+    status: Annotated[str | None, Query(description='订阅状态')] = None,
+) -> ResponseSchemaModel[PageData[GetUserSubscriptionDetail]]:
+    page_data = await user_subscription_service.get_list(
+        db=db,
+        user_keyword=user_keyword,
+        billing_cycle_start=billing_cycle_start,
+        billing_cycle_end=billing_cycle_end,
+        status=status,
+    )
     return response_base.success(data=page_data)
 
 
@@ -65,6 +78,23 @@ async def update_user_subscription(
     db: CurrentSessionTransaction, pk: Annotated[int, Path(description='用户订阅 ID')], obj: UpdateUserSubscriptionParam
 ) -> ResponseModel:
     count = await user_subscription_service.update(db=db, pk=pk, obj=obj)
+    if count > 0:
+        return response_base.success()
+    return response_base.fail()
+
+
+@router.delete(
+    '/{pk}',
+    summary='删除用户订阅',
+    dependencies=[
+        Depends(RequestPermission('user:subscription:del')),
+        DependsRBAC,
+    ],
+)
+async def delete_user_subscription(
+    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='用户订阅 ID')]
+) -> ResponseModel:
+    count = await user_subscription_service.delete(db=db, obj=DeleteUserSubscriptionParam(pks=[pk]))
     if count > 0:
         return response_base.success()
     return response_base.fail()

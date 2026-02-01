@@ -71,6 +71,23 @@ async def update_marketplace_app(
 
 
 @router.delete(
+    '/{pk}',
+    summary='删除技能市场应用',
+    dependencies=[
+        Depends(RequestPermission('marketplace:app:del')),
+        DependsRBAC,
+    ],
+)
+async def delete_marketplace_app(
+    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='技能市场应用 ID')]
+) -> ResponseModel:
+    count = await marketplace_app_service.delete(db=db, obj=DeleteMarketplaceAppParam(pks=[pk]))
+    if count > 0:
+        return response_base.success()
+    return response_base.fail()
+
+
+@router.delete(
     '',
     summary='批量删除技能市场应用',
     dependencies=[

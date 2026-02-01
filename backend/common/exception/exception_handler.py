@@ -86,7 +86,17 @@ def register_exception(app: FastAPI) -> None:  # noqa: C901
         :param exc: HTTP 异常
         :return:
         """
-        if settings.ENVIRONMENT == 'dev':
+        # 对于 429 错误，始终返回详细信息（用于客户端显示友好提示）
+        if exc.status_code == 429:
+            content = {
+                'code': exc.status_code,
+                'msg': exc.detail,
+                'data': None,
+            }
+            # 如果异常包含 error_type，添加到响应中
+            if hasattr(exc, 'error_type'):
+                content['error_type'] = exc.error_type
+        elif settings.ENVIRONMENT == 'dev':
             content = {
                 'code': exc.status_code,
                 'msg': exc.detail,

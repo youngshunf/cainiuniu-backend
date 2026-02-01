@@ -17,6 +17,7 @@ from backend.app.llm.schema.user_api_key import (
     UpdateUserApiKeyParam,
 )
 from backend.common.exception import errors
+from backend.common.log import log
 from backend.common.pagination import paging_data
 from backend.utils.timezone import timezone
 
@@ -100,6 +101,7 @@ class ApiKeyService:
         # 生成 API Key
         full_key, display_prefix = key_encryption.generate_api_key()
         key_hash = key_encryption.hash_key(full_key)
+        log.info(f"[DEBUG] Creating API Key. user_id={user_id}, hash={key_hash}, key_prefix={full_key[:15]}...")
         key_encrypted = key_encryption.encrypt(full_key)
 
         # 创建记录
@@ -163,6 +165,7 @@ class ApiKeyService:
         # 查找记录
         record = await user_api_key_dao.get_by_hash(db, key_hash)
         if not record:
+            log.warning(f"[DEBUG] verify_api_key failed. hash={key_hash}, key_prefix={api_key[:15]}...")
             raise errors.AuthorizationError(msg='Invalid API Key')
 
         # 检查状态
@@ -230,6 +233,11 @@ class ApiKeyService:
             if key.status == ApiKeyStatus.ACTIVE:
                 # 解密 Key
                 key._decrypted_key = key_encryption.decrypt(key.key_encrypted)
+                
+                # [DEBUG] 验证 Hash 一致性
+                cal_hash = key_encryption.hash_key(key._decrypted_key)
+                log.info(f"[DEBUG] get_default_key: id={key.id}, db_hash={key.key_hash}, cal_hash={cal_hash}, match={key.key_hash == cal_hash}")
+                
                 return key
 
         return None

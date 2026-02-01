@@ -1,11 +1,12 @@
 """技能/应用发布 API
 
 提供给 CLI 工具远程发布使用的接口。
-需要 API Key 认证。
+使用用户的 LLM API Key 认证，自动获取作者信息。
 """
 import hashlib
 import tempfile
 import zipfile
+from dataclasses import dataclass
 from decimal import Decimal
 from io import BytesIO
 from typing import Annotated, Optional
@@ -17,6 +18,8 @@ from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.admin.model.user import User
+from backend.app.llm.service.api_key_service import api_key_service
 from backend.app.marketplace.model import (
     MarketplaceSkill,
     MarketplaceSkillVersion,
@@ -32,24 +35,45 @@ router = APIRouter()
 
 
 # ============================================================
-# API Key 认证
+# 用户认证信息
+# ============================================================
+
+@dataclass
+class PublishUser:
+    """发布用户信息"""
+    user_id: int
+    username: str
+    nickname: str
+
+
+# ============================================================
+# API Key 认证（使用 LLM API Key）
 # ============================================================
 
 async def verify_publish_api_key(
+    db: CurrentSession,
     x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
-) -> str:
-    """验证发布 API Key"""
+) -> PublishUser:
+    """验证发布 API Key 并获取用户信息"""
     if not x_api_key:
         raise errors.AuthorizationError(msg='缺少 API Key')
     
-    # TODO: 从数据库或配置中验证 API Key
-    # 目前使用简单的环境变量验证
-    import os
-    valid_key = os.environ.get('MARKETPLACE_PUBLISH_API_KEY', 'dev-publish-key')
-    if x_api_key != valid_key:
-        raise errors.AuthorizationError(msg='无效的 API Key')
+    # 验证 API Key
+    api_key_record = await api_key_service.verify_api_key(db, x_api_key)
     
-    return x_api_key
+    # 获取用户信息
+    stmt = select(User).where(User.id == api_key_record.user_id)
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise errors.AuthorizationError(msg='用户不存在')
+    
+    return PublishUser(
+        user_id=user.id,
+        username=user.username,
+        nickname=user.nickname,
+    )
 
 
 # ============================================================
@@ -69,9 +93,10 @@ class PublishResult(BaseModel):
 # 技能发布 API
 # ============================================================
 
-@router.post('/skill', summary='发布技能包', dependencies=[Depends(verify_publish_api_key)])
+@router.post('/skill', summary='发布技能包')
 async def publish_skill(
     db: CurrentSession,
+    publish_user: Annotated[PublishUser, Depends(verify_publish_api_key)],
     file: Annotated[UploadFile, File(description='技能包 ZIP 文件')],
     version: Annotated[str | None, Form(description='版本号，不指定则使用包内版本')] = None,
     changelog: Annotated[str | None, Form(description='更新日志')] = None,
@@ -146,6 +171,8 @@ async def publish_skill(
         file_hash=file_hash,
         file_size=file_size,
         icon_url=icon_url,
+        author_id=publish_user.user_id,
+        author_name=publish_user.nickname or publish_user.username,
     )
     
     return response_base.success(data=PublishResult(
@@ -167,6 +194,8 @@ async def _save_skill_to_db(
     file_hash: str,
     file_size: int,
     icon_url: str | None,
+    author_id: int | None = None,
+    author_name: str | None = None,
 ) -> None:
     """保存技能到数据库"""
     # 检查技能是否存在
@@ -181,7 +210,8 @@ async def _save_skill_to_db(
             name=config['name'],
             description=config['description'],
             icon_url=icon_url,
-            author_name=config.get('author_name', ''),
+            author_id=author_id,
+            author_name=author_name or config.get('author_name', ''),
             pricing_type=config.get('pricing_type', 'free'),
             price=Decimal('0'),
             tags=','.join(config.get('tags', [])) if config.get('tags') else None,
@@ -203,6 +233,10 @@ async def _save_skill_to_db(
         }
         if icon_url:
             update_data['icon_url'] = icon_url
+        # 只有原作者或第一次发布时才更新作者信息
+        if author_id and (not skill.author_id or skill.author_id == author_id):
+            update_data['author_id'] = author_id
+            update_data['author_name'] = author_name
         
         stmt = update(MarketplaceSkill).where(
             MarketplaceSkill.skill_id == skill_id
@@ -257,9 +291,10 @@ async def _save_skill_to_db(
 # 应用发布 API
 # ============================================================
 
-@router.post('/app', summary='发布应用包', dependencies=[Depends(verify_publish_api_key)])
+@router.post('/app', summary='发布应用包')
 async def publish_app(
     db: CurrentSession,
+    publish_user: Annotated[PublishUser, Depends(verify_publish_api_key)],
     file: Annotated[UploadFile, File(description='应用包 ZIP 文件')],
     version: Annotated[str | None, Form(description='版本号，不指定则使用包内版本')] = None,
     changelog: Annotated[str | None, Form(description='更新日志')] = None,
@@ -290,10 +325,13 @@ async def publish_app(
                 if field not in manifest:
                     raise errors.RequestError(msg=f'manifest.json 缺少必需字段: {field}')
             
-            # 读取图标（可选）
+            # 读取图标（可选，支持多种路径）
             icon_content = None
-            if 'assets/icon.svg' in zf.namelist():
-                icon_content = zf.read('assets/icon.svg')
+            icon_paths = ['icon.svg', 'assets/icon.svg']
+            for icon_path in icon_paths:
+                if icon_path in zf.namelist():
+                    icon_content = zf.read(icon_path)
+                    break
     except zipfile.BadZipFile:
         raise errors.RequestError(msg='无效的 ZIP 文件')
     except json.JSONDecodeError:
@@ -335,6 +373,8 @@ async def publish_app(
         file_hash=file_hash,
         file_size=file_size,
         icon_url=icon_url,
+        author_id=publish_user.user_id,
+        author_name=publish_user.nickname or publish_user.username,
     )
     
     return response_base.success(data=PublishResult(
@@ -356,9 +396,13 @@ async def _save_app_to_db(
     file_hash: str,
     file_size: int,
     icon_url: str | None,
+    author_id: int | None = None,
+    author_name: str | None = None,
 ) -> None:
     """保存应用到数据库"""
-    skill_dependencies = manifest.get('skill_dependencies', [])
+    # 从 capabilities.skills 或 skill_dependencies 读取技能依赖
+    capabilities = manifest.get('capabilities', {})
+    skill_dependencies = capabilities.get('skills', []) or manifest.get('skill_dependencies', [])
     skill_deps_str = ','.join(skill_dependencies) if skill_dependencies else None
     
     # 检查应用是否存在
@@ -373,7 +417,8 @@ async def _save_app_to_db(
             name=manifest['name'],
             description=manifest['description'],
             icon_url=icon_url,
-            author_name=manifest.get('author_name', ''),
+            author_id=author_id,
+            author_name=author_name or manifest.get('author_name', ''),
             pricing_type=manifest.get('pricing_type', 'free'),
             price=Decimal('0'),
             skill_dependencies=skill_deps_str,
@@ -393,6 +438,10 @@ async def _save_app_to_db(
         }
         if icon_url:
             update_data['icon_url'] = icon_url
+        # 只有原作者或第一次发布时才更新作者信息
+        if author_id and (not app.author_id or app.author_id == author_id):
+            update_data['author_id'] = author_id
+            update_data['author_name'] = author_name
         
         stmt = update(MarketplaceApp).where(
             MarketplaceApp.app_id == app_id

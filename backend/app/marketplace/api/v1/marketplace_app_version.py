@@ -71,6 +71,23 @@ async def update_marketplace_app_version(
 
 
 @router.delete(
+    '/{pk}',
+    summary='删除应用版本',
+    dependencies=[
+        Depends(RequestPermission('marketplace:app:version:del')),
+        DependsRBAC,
+    ],
+)
+async def delete_marketplace_app_version(
+    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='应用版本 ID')]
+) -> ResponseModel:
+    count = await marketplace_app_version_service.delete(db=db, obj=DeleteMarketplaceAppVersionParam(pks=[pk]))
+    if count > 0:
+        return response_base.success()
+    return response_base.fail()
+
+
+@router.delete(
     '',
     summary='批量删除应用版本',
     dependencies=[

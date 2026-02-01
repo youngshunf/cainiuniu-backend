@@ -43,5 +43,6 @@ class GetMarketplaceSkillDetail(MarketplaceSkillSchemaBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    latest_version: str | None = Field(None, description='最新版本号')
     created_time: datetime
     updated_time: datetime | None = None

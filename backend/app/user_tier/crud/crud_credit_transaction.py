@@ -1,9 +1,10 @@
 from typing import Sequence
 
-from sqlalchemy import Select
+from sqlalchemy import Select, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy_crud_plus import CRUDPlus
 
+from backend.app.admin.model import User
 from backend.app.user_tier.model import CreditTransaction
 from backend.app.user_tier.schema.credit_transaction import CreateCreditTransactionParam, UpdateCreditTransactionParam
 
@@ -19,9 +20,48 @@ class CRUDCreditTransaction(CRUDPlus[CreditTransaction]):
         """
         return await self.select_model(db, pk)
 
-    async def get_select(self) -> Select:
-        """获取积分交易记录列表查询表达式"""
-        return await self.select_order('id', 'desc')
+    async def get_select(
+        self,
+        *,
+        user_keyword: str | None = None,
+        transaction_type: str | None = None,
+        reference_id: str | None = None,
+        reference_type: str | None = None,
+    ) -> Select:
+        """获取积分交易记录列表查询表达式，支持用户昵称/手机号搜索"""
+        stmt = select(
+            CreditTransaction.id,
+            CreditTransaction.user_id,
+            User.nickname.label('user_nickname'),
+            User.phone.label('user_phone'),
+            CreditTransaction.transaction_type,
+            CreditTransaction.credits,
+            CreditTransaction.balance_before,
+            CreditTransaction.balance_after,
+            CreditTransaction.reference_id,
+            CreditTransaction.reference_type,
+            CreditTransaction.description,
+            CreditTransaction.extra_data,
+            CreditTransaction.created_time,
+            CreditTransaction.updated_time,
+        ).outerjoin(User, CreditTransaction.user_id == User.id)
+
+        if user_keyword is not None:
+            stmt = stmt.where(
+                or_(
+                    User.nickname.ilike(f'%{user_keyword}%'),
+                    User.phone.ilike(f'%{user_keyword}%'),
+                )
+            )
+        if transaction_type is not None:
+            stmt = stmt.where(CreditTransaction.transaction_type == transaction_type)
+        if reference_id is not None:
+            stmt = stmt.where(CreditTransaction.reference_id.ilike(f'%{reference_id}%'))
+        if reference_type is not None:
+            stmt = stmt.where(CreditTransaction.reference_type == reference_type)
+
+        stmt = stmt.order_by(CreditTransaction.id.desc())
+        return stmt
 
     async def get_all(self, db: AsyncSession) -> Sequence[CreditTransaction]:
         """

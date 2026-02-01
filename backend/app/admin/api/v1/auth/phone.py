@@ -19,6 +19,8 @@ from backend.app.admin.schema.phone_auth import (
     SendCodeResponse,
 )
 from backend.app.llm.service.api_key_service import api_key_service
+from backend.app.openclaw.schema import GatewayConfigCreate
+from backend.app.openclaw.service import create_gateway_config
 from backend.common.exception import errors
 from backend.common.response.response_schema import ResponseSchemaModel, response_base
 from backend.common.security.jwt import DependsJwtAuth, create_access_token, create_refresh_token
@@ -44,16 +46,20 @@ def generate_code(length: int = 6) -> str:
     '/send-code',
     summary='发送验证码',
     description='发送手机验证码，用于登录或注册',
-    dependencies=[Depends(RateLimiter(times=1, minutes=1))],  # 每分钟最多发送 1 次
 )
 async def send_verification_code(obj: SendCodeParam) -> ResponseSchemaModel[SendCodeResponse]:
     """
     发送手机验证码
 
-    - 每分钟最多发送 1 次
+    - 每个手机号每分钟最多发送 1 次
     - 验证码有效期 5 分钟
     """
     phone = obj.phone
+
+    # 检查该手机号的发送频率限制（每分钟最多 1 次）
+    rate_limit_key = f'{SMS_CODE_PREFIX}:rate_limit:{phone}'
+    if await redis_client.exists(rate_limit_key):
+        raise errors.RequestError(msg='验证码发送过于频繁，请稍后再试')
 
     # 生成验证码
     code = generate_code()
@@ -61,9 +67,12 @@ async def send_verification_code(obj: SendCodeParam) -> ResponseSchemaModel[Send
     # 存储到 Redis
     await redis_client.setex(f'{SMS_CODE_PREFIX}:{phone}', SMS_CODE_EXPIRE, code)
 
+    # 设置频率限制（1 分钟）
+    await redis_client.setex(rate_limit_key, 60, '1')
+
     # 发送短信验证码
     success = await sms_service.send_code(phone, code)
-    if not success and settings.ENVIRONMENT != 'dev':
+    if not success:
         raise errors.RequestError(msg='验证码发送失败，请稍后重试')
 
     return response_base.success(data=SendCodeResponse(success=True, message='验证码已发送'))
@@ -108,14 +117,14 @@ async def phone_login(
     if not user:
         # 自动注册新用户
         is_new_user = True
-        username = f'user_{phone[-4:]}'  # 使用手机号后4位作为用户名
+        username = phone  # 使用手机号作为用户名
         nickname = f'用户{phone[-4:]}'
 
-        # 检查用户名是否已存在，如果存在则添加随机后缀
+        # 检查用户名是否已存在（正常情况不应该冲突，因为上面已经通过 phone 查过）
         existing = await user_dao.get_by_username(db, username)
         if existing:
-            username = f'{username}_{generate_code(4)}'
-            nickname = f'用户{phone[-4:]}_{generate_code(4)}'
+            # 如果用户名已存在但手机号不同，说明有冲突，添加后缀
+            username = f'{phone}_{generate_code(4)}'
 
         # 创建用户
         user = User(
@@ -131,6 +140,10 @@ async def phone_login(
 
         # 自动创建 API Key
         await api_key_service.create_default_key(db, user.id)
+        
+        # 初始化订阅和赠送积分
+        from backend.app.user_tier.service.credit_service import credit_service
+        await credit_service.get_or_create_subscription(db, user.id)
 
     # 更新最后登录时间
     user.last_login_time = timezone.now()
@@ -165,6 +178,15 @@ async def phone_login(
     api_key = await api_key_service.get_or_create_default_key(db, user.id)
     llm_token = api_key._decrypted_key
 
+    # 获取或创建 Gateway Token
+    gateway_token_response = await create_gateway_config(
+        db,
+        user_id=user.id,
+        data=GatewayConfigCreate(openclaw_config=None),
+        auto_commit=False,  # 使用调用方的事务管理
+    )
+    gateway_token = gateway_token_response.gateway_token
+
     # 构建用户信息
     user_info = PhoneLoginUserInfo(
         uuid=user.uuid,
@@ -183,6 +205,7 @@ async def phone_login(
             refresh_token=refresh_token_data.refresh_token,
             refresh_token_expire_time=refresh_token_data.refresh_token_expire_time,
             llm_token=llm_token,
+            gateway_token=gateway_token,
             is_new_user=is_new_user,
             user=user_info,
         )

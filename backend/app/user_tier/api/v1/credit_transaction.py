@@ -35,8 +35,20 @@ async def get_credit_transaction(
         DependsPagination,
     ],
 )
-async def get_credit_transactions_paginated(db: CurrentSession) -> ResponseSchemaModel[PageData[GetCreditTransactionDetail]]:
-    page_data = await credit_transaction_service.get_list(db=db)
+async def get_credit_transactions_paginated(
+    db: CurrentSession,
+    user_keyword: Annotated[str | None, Query(description='用户昵称/手机号搜索')] = None,
+    transaction_type: Annotated[str | None, Query(description='交易类型')] = None,
+    reference_id: Annotated[str | None, Query(description='关联 ID')] = None,
+    reference_type: Annotated[str | None, Query(description='关联类型')] = None,
+) -> ResponseSchemaModel[PageData[GetCreditTransactionDetail]]:
+    page_data = await credit_transaction_service.get_list(
+        db=db,
+        user_keyword=user_keyword,
+        transaction_type=transaction_type,
+        reference_id=reference_id,
+        reference_type=reference_type,
+    )
     return response_base.success(data=page_data)
 
 
@@ -65,6 +77,23 @@ async def update_credit_transaction(
     db: CurrentSessionTransaction, pk: Annotated[int, Path(description='积分交易记录 ID')], obj: UpdateCreditTransactionParam
 ) -> ResponseModel:
     count = await credit_transaction_service.update(db=db, pk=pk, obj=obj)
+    if count > 0:
+        return response_base.success()
+    return response_base.fail()
+
+
+@router.delete(
+    '/{pk}',
+    summary='删除积分交易记录',
+    dependencies=[
+        Depends(RequestPermission('credit:transaction:del')),
+        DependsRBAC,
+    ],
+)
+async def delete_credit_transaction(
+    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='积分交易记录 ID')]
+) -> ResponseModel:
+    count = await credit_transaction_service.delete(db=db, obj=DeleteCreditTransactionParam(pks=[pk]))
     if count > 0:
         return response_base.success()
     return response_base.fail()

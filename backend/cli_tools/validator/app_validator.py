@@ -56,6 +56,14 @@ class AppManifest:
         author = data.get('author', {})
         pricing = data.get('pricing', {})
         marketplace = data.get('marketplace', {})
+        capabilities = data.get('capabilities', {})
+        
+        # 技能依赖优先从 capabilities.skills 读取，其次从 skillDependencies
+        skill_deps = []
+        if isinstance(capabilities, dict) and capabilities.get('skills'):
+            skill_deps = capabilities.get('skills', [])
+        elif data.get('skillDependencies'):
+            skill_deps = data.get('skillDependencies', [])
         
         return cls(
             id=data.get('id', ''),
@@ -68,7 +76,7 @@ class AppManifest:
             license=data.get('license'),
             homepage=data.get('homepage'),
             pricing_type=pricing.get('type', 'free') if isinstance(pricing, dict) else 'free',
-            skill_dependencies=data.get('skillDependencies', []),
+            skill_dependencies=skill_deps,
             category=marketplace.get('category') if isinstance(marketplace, dict) else None,
             tags=marketplace.get('tags', []) if isinstance(marketplace, dict) else [],
         )

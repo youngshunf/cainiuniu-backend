@@ -24,6 +24,7 @@ router = APIRouter()
 class DownloadResponse(BaseModel):
     """下载响应"""
     download_url: str
+    version: str
     file_hash: str | None
     file_size: int | None
 
@@ -31,6 +32,7 @@ class DownloadResponse(BaseModel):
 class AppDownloadResponse(BaseModel):
     """应用下载响应，包含依赖技能信息"""
     download_url: str
+    version: str
     file_hash: str | None
     file_size: int | None
     skill_dependencies: list[dict] | None  # [{id, version, download_url}]
@@ -65,6 +67,7 @@ async def download_skill(
     
     return response_base.success(data=DownloadResponse(
         download_url=skill_version.package_url,
+        version=skill_version.version,
         file_hash=skill_version.file_hash,
         file_size=skill_version.file_size,
     ))
@@ -112,6 +115,7 @@ async def download_skill_with_record(
     
     return response_base.success(data=DownloadResponse(
         download_url=skill_version.package_url,
+        version=skill_version.version,
         file_hash=skill_version.file_hash,
         file_size=skill_version.file_size,
     ))
@@ -160,6 +164,7 @@ async def download_app(
     
     return response_base.success(data=AppDownloadResponse(
         download_url=app_version.package_url,
+        version=app_version.version,
         file_hash=app_version.file_hash,
         file_size=app_version.file_size,
         skill_dependencies=skill_dependencies if skill_dependencies else None,

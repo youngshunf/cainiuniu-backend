@@ -63,6 +63,16 @@ class CRUDUser(CRUDPlus[User]):
         """
         return await self.select_model_by_column(db, nickname=nickname)
 
+    async def get_by_phone(self, db: AsyncSession, phone: str) -> User | None:
+        """
+        通过手机号获取用户
+
+        :param db: 数据库会话
+        :param phone: 手机号
+        :return:
+        """
+        return await self.select_model_by_column(db, phone=phone)
+
     async def check_email(self, db: AsyncSession, email: str) -> User | None:
         """
         检查邮箱是否已被绑定

@@ -71,6 +71,23 @@ async def update_marketplace_skill_version(
 
 
 @router.delete(
+    '/{pk}',
+    summary='删除技能版本',
+    dependencies=[
+        Depends(RequestPermission('marketplace:skill:version:del')),
+        DependsRBAC,
+    ],
+)
+async def delete_marketplace_skill_version(
+    db: CurrentSessionTransaction, pk: Annotated[int, Path(description='技能版本 ID')]
+) -> ResponseModel:
+    count = await marketplace_skill_version_service.delete(db=db, obj=DeleteMarketplaceSkillVersionParam(pks=[pk]))
+    if count > 0:
+        return response_base.success()
+    return response_base.fail()
+
+
+@router.delete(
     '',
     summary='批量删除技能版本',
     dependencies=[

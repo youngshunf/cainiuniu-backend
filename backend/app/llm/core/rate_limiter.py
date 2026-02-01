@@ -8,8 +8,14 @@ from backend.database.redis import redis_client
 
 class RateLimitExceeded(HTTPError):
     """速率限制超出异常"""
+    
+    # 错误类型常量
+    RPM_EXCEEDED = 'rpm_exceeded'
+    DAILY_EXCEEDED = 'daily_quota_exceeded'
+    MONTHLY_EXCEEDED = 'monthly_quota_exceeded'
 
-    def __init__(self, message: str = 'Rate limit exceeded') -> None:
+    def __init__(self, message: str = 'Rate limit exceeded', error_type: str = 'rate_limit_exceeded') -> None:
+        self.error_type = error_type
         super().__init__(code=429, msg=message)
 
 
@@ -53,7 +59,10 @@ class RateLimiter:
             await redis_client.expire(key, 60)
 
         if count > rpm_limit:
-            raise RateLimitExceeded(f'RPM limit exceeded: {count}/{rpm_limit}')
+            raise RateLimitExceeded(
+                '请求过于频繁，请稍后重试',
+                error_type=RateLimitExceeded.RPM_EXCEEDED
+            )
 
         return True
 
@@ -70,7 +79,10 @@ class RateLimiter:
         tokens = int(await redis_client.get(key) or 0)
 
         if tokens >= daily_limit:
-            raise RateLimitExceeded(f'Daily token limit exceeded: {tokens}/{daily_limit}')
+            raise RateLimitExceeded(
+                '今日额度已用完，请明天再来',
+                error_type=RateLimitExceeded.DAILY_EXCEEDED
+            )
 
         return True
 
@@ -87,7 +99,10 @@ class RateLimiter:
         tokens = int(await redis_client.get(key) or 0)
 
         if tokens >= monthly_limit:
-            raise RateLimitExceeded(f'Monthly token limit exceeded: {tokens}/{monthly_limit}')
+            raise RateLimitExceeded(
+                '本月额度已用完，请下月再来或升级套餐',
+                error_type=RateLimitExceeded.MONTHLY_EXCEEDED
+            )
 
         return True
 
