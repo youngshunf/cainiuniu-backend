@@ -62,6 +62,8 @@ dependencies = [
     "orjson>=3.10.0",
     "backoff>=2.2.0",
     "tiktoken>=0.7.0",
+    # S3 插件依赖
+    "opendal>=0.46.0",
 ]
 
 [dependency-groups]
