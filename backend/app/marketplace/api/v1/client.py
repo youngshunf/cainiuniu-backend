@@ -90,11 +90,13 @@ async def get_skill_versions(
 @router.get('/apps', summary='公开接口：获取应用列表', dependencies=[DependsPagination])
 async def list_apps(
     db: CurrentSession,
+    category: Optional[str] = Query(None, description='分类筛选'),
     pricing_type: Optional[str] = Query(None, description='定价类型: free/paid/subscription'),
     is_official: Optional[bool] = Query(None, description='是否官方'),
 ) -> ResponseSchemaModel[PageData[GetMarketplaceAppDetail]]:
     """公开的应用列表接口，无需登录"""
     app_select = await marketplace_app_dao.get_select_public(
+        category=category,
         pricing_type=pricing_type,
         is_official=is_official,
     )
@@ -207,6 +209,7 @@ async def client_search(
         app_results = await marketplace_app_dao.search(
             db=db,
             keyword=q,
+            category=category,
             limit=limit,
         )
         # 转换为 schema 并填充 latest_version 字段

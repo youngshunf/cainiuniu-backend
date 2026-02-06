@@ -404,6 +404,12 @@ async def _save_app_to_db(
     capabilities = manifest.get('capabilities', {})
     skill_dependencies = capabilities.get('skills', []) or manifest.get('skill_dependencies', [])
     skill_deps_str = ','.join(skill_dependencies) if skill_dependencies else None
+
+    # 读取 marketplace 元数据（兼容嵌套和顶层两种格式）
+    marketplace_meta = manifest.get('marketplace', {})
+    app_category = marketplace_meta.get('category') or manifest.get('category')
+    app_tags_list = marketplace_meta.get('tags') or manifest.get('tags', [])
+    app_tags = ','.join(app_tags_list) if app_tags_list else None
     
     # 检查应用是否存在
     stmt = select(MarketplaceApp).where(MarketplaceApp.app_id == app_id)
@@ -419,9 +425,11 @@ async def _save_app_to_db(
             icon_url=icon_url,
             author_id=author_id,
             author_name=author_name or manifest.get('author_name', ''),
-            pricing_type=manifest.get('pricing_type', 'free'),
+            pricing_type=manifest.get('pricing_type') or manifest.get('pricing', {}).get('type', 'free'),
             price=Decimal('0'),
             skill_dependencies=skill_deps_str,
+            category=app_category,
+            tags=app_tags,
             is_private=False,
             is_official=False,
             download_count=0,
@@ -433,8 +441,10 @@ async def _save_app_to_db(
         update_data = {
             'name': manifest['name'],
             'description': manifest['description'],
-            'pricing_type': manifest.get('pricing_type', 'free'),
+            'pricing_type': manifest.get('pricing_type') or manifest.get('pricing', {}).get('type', 'free'),
             'skill_dependencies': skill_deps_str,
+            'category': app_category,
+            'tags': app_tags,
         }
         if icon_url:
             update_data['icon_url'] = icon_url

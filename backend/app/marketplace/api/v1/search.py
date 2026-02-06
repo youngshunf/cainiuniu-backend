@@ -38,6 +38,8 @@ class SearchAppItem(BaseModel):
     description: str | None
     icon_url: str | None
     author_name: str | None
+    category: str | None
+    tags: str | None
     pricing_type: str
     download_count: int
     is_official: bool
@@ -79,6 +81,7 @@ async def search(
                 MarketplaceSkill.description.ilike(search_pattern),
                 MarketplaceSkill.tags.ilike(search_pattern),
                 MarketplaceSkill.skill_id.ilike(search_pattern),
+                MarketplaceSkill.category.ilike(search_pattern),
             )
         )
         
@@ -119,9 +122,14 @@ async def search(
                 MarketplaceApp.name.ilike(search_pattern),
                 MarketplaceApp.description.ilike(search_pattern),
                 MarketplaceApp.app_id.ilike(search_pattern),
+                MarketplaceApp.tags.ilike(search_pattern),
+                MarketplaceApp.category.ilike(search_pattern),
             )
         )
         
+        if category:
+            app_query = app_query.where(MarketplaceApp.category == category)
+
         app_query = app_query.order_by(
             MarketplaceApp.is_official.desc(),
             MarketplaceApp.download_count.desc()
@@ -138,6 +146,8 @@ async def search(
                 description=a.description,
                 icon_url=a.icon_url,
                 author_name=a.author_name,
+                category=a.category,
+                tags=a.tags,
                 pricing_type=a.pricing_type,
                 download_count=a.download_count,
                 is_official=a.is_official,

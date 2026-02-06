@@ -89,20 +89,24 @@ class CRUDMarketplaceApp(CRUDPlus[MarketplaceApp]):
 
     async def get_select_public(
         self,
+        category: Optional[str] = None,
         pricing_type: Optional[str] = None,
         is_official: Optional[bool] = None,
     ) -> Select:
         """
         获取公开应用列表的查询表达式
 
+        :param category: 分类筛选
         :param pricing_type: 定价类型筛选
         :param is_official: 是否官方筛选
         :return: 查询表达式
         """
         # 构建基础查询 - 只返回公开的应用
         stmt = select(MarketplaceApp).where(MarketplaceApp.is_private == False)
-        
+
         # 添加筛选条件
+        if category:
+            stmt = stmt.where(MarketplaceApp.category == category)
         if pricing_type:
             stmt = stmt.where(MarketplaceApp.pricing_type == pricing_type)
         if is_official is not None:
@@ -121,6 +125,7 @@ class CRUDMarketplaceApp(CRUDPlus[MarketplaceApp]):
         self,
         db: AsyncSession,
         keyword: str,
+        category: Optional[str] = None,
         limit: int = 20,
     ) -> list[MarketplaceApp]:
         """
@@ -128,6 +133,7 @@ class CRUDMarketplaceApp(CRUDPlus[MarketplaceApp]):
 
         :param db: 数据库会话
         :param keyword: 搜索关键词
+        :param category: 分类筛选
         :param limit: 最大结果数
         :return: 应用列表
         """
@@ -136,14 +142,19 @@ class CRUDMarketplaceApp(CRUDPlus[MarketplaceApp]):
             or_(
                 MarketplaceApp.name.ilike(f'%{keyword}%'),
                 MarketplaceApp.description.ilike(f'%{keyword}%'),
+                MarketplaceApp.tags.ilike(f'%{keyword}%'),
+                MarketplaceApp.category.ilike(f'%{keyword}%'),
             )
         )
-        
+
+        if category:
+            stmt = stmt.where(MarketplaceApp.category == category)
+
         stmt = stmt.order_by(
             MarketplaceApp.is_official.desc(),
             MarketplaceApp.download_count.desc(),
         ).limit(limit)
-        
+
         result = await db.execute(stmt)
         return list(result.scalars().all())
 

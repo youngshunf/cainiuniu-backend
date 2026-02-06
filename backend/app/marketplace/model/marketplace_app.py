@@ -20,6 +20,8 @@ class MarketplaceApp(Base):
     icon_url: Mapped[str | None] = mapped_column(sa.String(500), default=None, comment='应用图标URL')
     author_id: Mapped[int | None] = mapped_column(sa.BIGINT(), default=None, comment='作者用户ID')
     author_name: Mapped[str | None] = mapped_column(sa.String(100), default=None, comment='作者名称')
+    category: Mapped[str | None] = mapped_column(sa.String(50), default=None, comment='分类')
+    tags: Mapped[str | None] = mapped_column(sa.String(500), default=None, comment='标签，逗号分隔')
     pricing_type: Mapped[str] = mapped_column(sa.String(20), default='', comment='定价类型 (free:免费:green/paid:付费:orange/subscription:订阅:blue)')
     price: Mapped[Decimal] = mapped_column(sa.NUMERIC(), default=None, comment='价格')
     is_private: Mapped[bool] = mapped_column(sa.BOOLEAN(), default=True, comment='是否私有')

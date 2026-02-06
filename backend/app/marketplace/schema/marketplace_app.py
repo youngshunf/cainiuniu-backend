@@ -14,6 +14,8 @@ class MarketplaceAppSchemaBase(SchemaBase):
     icon_url: str | None = Field(None, description='应用图标URL')
     author_id: int | None = Field(None, description='作者用户ID')
     author_name: str | None = Field(None, description='作者名称')
+    category: str | None = Field(None, description='分类')
+    tags: str | None = Field(None, description='标签，逗号分隔')
     pricing_type: str = Field(description='定价类型 (free:免费:green/paid:付费:orange/subscription:订阅:blue)')
     price: Decimal = Field(description='价格')
     is_private: bool = Field(description='是否私有')

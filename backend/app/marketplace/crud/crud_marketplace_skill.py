@@ -147,6 +147,7 @@ class CRUDMarketplaceSkill(CRUDPlus[MarketplaceSkill]):
                 MarketplaceSkill.name.ilike(f'%{keyword}%'),
                 MarketplaceSkill.description.ilike(f'%{keyword}%'),
                 MarketplaceSkill.tags.ilike(f'%{keyword}%'),
+                MarketplaceSkill.category.ilike(f'%{keyword}%'),
             )
         )
         
